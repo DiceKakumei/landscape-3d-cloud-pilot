@@ -3,15 +3,16 @@ landscape_pilot: bench + tree の風景シーンをheadless Blenderで組み立�
 ワールド設定・レンダリング・コンポジットまで一括実行する。
 GitHub Actions上での実行を想定(--background --python このファイル)。
 
-入力: /github/workspace/assets/bench.glb, /github/workspace/assets/tree.glb
-出力: /github/workspace/output/render.png, /github/workspace/output/scene.blend
+入力: $GITHUB_WORKSPACE/assets/bench.glb, $GITHUB_WORKSPACE/assets/tree.glb
+出力: $GITHUB_WORKSPACE/output/render.png, $GITHUB_WORKSPACE/output/scene.blend
 """
 import bpy
 import math
 import os
 
-ASSET_DIR = "/github/workspace/assets"
-OUTPUT_DIR = "/github/workspace/output"
+WORKSPACE = os.environ.get("GITHUB_WORKSPACE", os.getcwd())
+ASSET_DIR = os.path.join(WORKSPACE, "assets")
+OUTPUT_DIR = os.path.join(WORKSPACE, "output")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 # ---------------------------------------------------------------
