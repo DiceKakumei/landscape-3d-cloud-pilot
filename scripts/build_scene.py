@@ -69,14 +69,14 @@ def import_glb_scaled(filepath, target_height_m, name):
 # ---------------------------------------------------------------
 # 1. 被写体の配置(scene_analysis.mdの見積もりに基づく)
 # ---------------------------------------------------------------
-# ベンチ: 前景・カメラから約8m・全長1.6m
+# ベンチ: 前景・カメラから約5m・全長1.6m
 bench = import_glb_scaled(os.path.join(ASSET_DIR, "bench.glb"), target_height_m=0.9, name="Bench")
-bench.location = (-3.0, 8.0, 0.0)
+bench.location = (-2.2, 5.0, 0.0)
 bench.rotation_euler = (0, 0, math.radians(20))
 
-# 木: 中景・カメラから約32m(ベンチの4倍)・樹高8m
+# 木: 中景・カメラから約20m(ベンチの4倍)・樹高8m
 tree = import_glb_scaled(os.path.join(ASSET_DIR, "tree.glb"), target_height_m=8.0, name="Tree")
-tree.location = (6.5, 32.0, 0.0)
+tree.location = (5.5, 20.0, 0.0)
 
 # ---------------------------------------------------------------
 # 2. 地面(平坦な芝生プレーン)
@@ -153,7 +153,7 @@ sun.rotation_euler = (
 bpy.ops.object.camera_add(location=(0, -1.0, 1.6))
 cam = bpy.context.active_object
 cam.name = "MainCamera"
-cam.rotation_euler = (math.radians(88), 0, 0)
+cam.rotation_euler = (math.radians(80), 0, 0)
 cam.data.lens = 35
 scene.camera = cam
 
@@ -184,23 +184,11 @@ glare = ctree.nodes.new("CompositorNodeGlare")
 glare.glare_type = "FOG_GLOW"
 glare.threshold = 1.0
 glare.mix = -0.3
-vignette_mix = ctree.nodes.new("CompositorNodeMixRGB")
-vignette_mix.blend_type = "MULTIPLY"
-vignette_mix.inputs[0].default_value = 0.25
-ellipse = ctree.nodes.new("CompositorNodeEllipseMask")
-ellipse.width = 0.9
-ellipse.height = 0.9
-ellipse_blur = ctree.nodes.new("CompositorNodeBlur")
-ellipse_blur.size_x = 60
-ellipse_blur.size_y = 60
 composite = ctree.nodes.new("CompositorNodeComposite")
 
 ctree.links.new(rlayers.outputs["Image"], color_balance.inputs["Image"])
 ctree.links.new(color_balance.outputs["Image"], glare.inputs["Image"])
-ctree.links.new(glare.outputs["Image"], vignette_mix.inputs[1])
-ctree.links.new(ellipse.outputs["Mask"], ellipse_blur.inputs["Image"])
-ctree.links.new(ellipse_blur.outputs["Image"], vignette_mix.inputs[2])
-ctree.links.new(vignette_mix.outputs["Image"], composite.inputs["Image"])
+ctree.links.new(glare.outputs["Image"], composite.inputs["Image"])
 
 # ---------------------------------------------------------------
 # 7. 出力
