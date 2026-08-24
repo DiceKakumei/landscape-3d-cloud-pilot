@@ -38,31 +38,60 @@ def import_glb_scaled(filepath, target_height_m, name):
     if not meshes:
         raise RuntimeError(f"{filepath}: メッシュが見つかりません")
 
+    # glTFインポートは軸変換用の親Empty(独自scale/rotationを持つ場合がある)を
+    # 作ることがある。親のtransformを子に焼き込んでから外し、その後obj.scaleを
+    # 1.0基準にtransform_applyしておかないと、後段の「measured_height→scale上書き」
+    # 計算が親のscaleぶんだけズレて接地位置がズレる(地面に埋まる/浮く原因)。
     for o in imported:
         o.select_set(True)
+    bpy.context.view_layer.objects.active = meshes[0]
+    bpy.ops.object.parent_clear(type="CLEAR_KEEP_TRANSFORM")
+
+    for o in bpy.context.selected_objects:
+        if o.type != "MESH":
+            o.select_set(False)
     bpy.context.view_layer.objects.active = meshes[0]
     if len(meshes) > 1:
         bpy.ops.object.join()
     obj = bpy.context.view_layer.objects.active
     obj.name = name
 
-    # バウンディングボックスから高さ(Z)を測り、目標高さにスケール
-    bbox = [obj.matrix_world @ v.co for v in obj.data.vertices]
-    min_z = min(v.z for v in bbox)
-    max_z = max(v.z for v in bbox)
+    bpy.ops.object.select_all(action="DESELECT")
+    obj.select_set(True)
+    bpy.context.view_layer.objects.active = obj
+    bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
+    assert tuple(round(s, 4) for s in obj.scale) == (1.0, 1.0, 1.0), obj.scale
+
+    # ここでobj.scaleは確実に(1,1,1)なので、以降のスケール計算は安全
+    verts = [obj.matrix_world @ v.co for v in obj.data.vertices]
+    min_z = min(v.z for v in verts)
+    max_z = max(v.z for v in verts)
     height = max(max_z - min_z, 1e-6)
     scale = target_height_m / height
     obj.scale = (scale, scale, scale)
     bpy.context.view_layer.update()
 
     # 底面中心を原点(0,0,0)に揃える
-    bbox = [obj.matrix_world @ v.co for v in obj.data.vertices]
-    min_z = min(v.z for v in bbox)
-    center_x = sum(v.x for v in bbox) / len(bbox)
-    center_y = sum(v.y for v in bbox) / len(bbox)
+    verts = [obj.matrix_world @ v.co for v in obj.data.vertices]
+    min_z = min(v.z for v in verts)
+    center_x = sum(v.x for v in verts) / len(verts)
+    center_y = sum(v.y for v in verts) / len(verts)
     obj.location.x -= center_x
     obj.location.y -= center_y
     obj.location.z -= min_z
+    bpy.context.view_layer.update()
+
+    # 自己検証: 配置後の接地点がZ=0付近(浮き/埋まりなし)か数値でログに残す
+    verts = [obj.matrix_world @ v.co for v in obj.data.vertices]
+    final_min_z = min(v.z for v in verts)
+    final_max_z = max(v.z for v in verts)
+    print(
+        f"[check] {name}: min_z={final_min_z:.4f} max_z={final_max_z:.4f} "
+        f"height={final_max_z - final_min_z:.4f} (target={target_height_m})"
+    )
+    if abs(final_min_z) > 0.02:
+        print(f"[WARNING] {name} may be floating/sunk: min_z={final_min_z:.4f} (expected ~0)")
+
     return obj
 
 
