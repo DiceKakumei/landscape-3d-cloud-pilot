@@ -168,7 +168,8 @@ ctree = scene.node_tree
 ctree.nodes.clear()
 rlayers = ctree.nodes.new("CompositorNodeRLayers")
 color_balance = ctree.nodes.new("CompositorNodeColorBalance")
-color_balance.color_balance.gain = (1.02, 1.0, 0.97)
+color_balance.correction_method = "LIFT_GAMMA_GAIN"
+color_balance.gain = (1.02, 1.0, 0.97)
 glare = ctree.nodes.new("CompositorNodeGlare")
 glare.glare_type = "FOG_GLOW"
 glare.threshold = 1.0
