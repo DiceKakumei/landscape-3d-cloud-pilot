@@ -42,4 +42,3 @@ jobs:
             output/render.png
             output/scene.blend
           retention-days: 14
-# retrigger
