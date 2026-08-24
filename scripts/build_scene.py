@@ -28,7 +28,60 @@ scene = bpy.context.scene
 scene.unit_settings.system = "METRIC"
 
 
-def import_glb_scaled(filepath, target_height_m, name):
+def strip_thin_base_slab(obj, thickness_ratio=0.06, footprint_ratio=0.5, max_pieces=20):
+    """objの中に、全高に比べて極端に薄く水平方向には広い"台座/影受け板"らしき
+    ルーズパーツがあれば削除する(Meshyのimage-to-3dが単体撮影時の接地シャドウを
+    そのまま平板ジオメトリとして焼き込むことがあるため)。
+    パーツ数が多すぎる場合(有機物の枝葉など個々が小さいパーツに分かれている場合)
+    は誤検出のリスクが高いため何もせず1つに結合し直すだけにする。"""
+    bpy.ops.object.select_all(action="DESELECT")
+    obj.select_set(True)
+    bpy.context.view_layer.objects.active = obj
+    bpy.ops.object.mode_set(mode="EDIT")
+    bpy.ops.mesh.select_all(action="SELECT")
+    bpy.ops.mesh.separate(type="LOOSE")
+    bpy.ops.object.mode_set(mode="OBJECT")
+    pieces = [o for o in bpy.context.selected_objects if o.type == "MESH"]
+
+    def rejoin(objs):
+        bpy.ops.object.select_all(action="DESELECT")
+        for p in objs:
+            p.select_set(True)
+        bpy.context.view_layer.objects.active = objs[0]
+        if len(objs) > 1:
+            bpy.ops.object.join()
+        return bpy.context.view_layer.objects.active
+
+    if len(pieces) <= 1 or len(pieces) > max_pieces:
+        return rejoin(pieces)
+
+    stats = []
+    for p in pieces:
+        xs = [v.co.x for v in p.data.vertices]
+        ys = [v.co.y for v in p.data.vertices]
+        zs = [v.co.z for v in p.data.vertices]
+        stats.append((p, max(xs) - min(xs), max(ys) - min(ys), max(zs) - min(zs)))
+
+    total_z = max(s[3] for s in stats)
+    total_footprint = max(max(s[1], s[2]) for s in stats)
+
+    keep = []
+    for p, dx, dy, dz in stats:
+        thin = total_z > 0 and (dz / total_z) < thickness_ratio
+        wide = total_footprint > 0 and (max(dx, dy) / total_footprint) > footprint_ratio
+        if thin and wide:
+            print(f"[cleanup] {obj.name}: removing thin base slab piece (dz={dz:.4f}, footprint={max(dx, dy):.4f})")
+            bpy.data.objects.remove(p, do_unlink=True)
+        else:
+            keep.append(p)
+
+    if not keep:
+        keep = pieces  # 誤検出で全部消えるのを防ぐ安全策(通常は起きない)
+
+    return rejoin(keep)
+
+
+def import_glb_scaled(filepath, target_height_m, name, strip_thin_base=False):
     """glbをインポートし、バウンディングボックス高さがtarget_height_mになるよう
     一様スケールし、原点を底面中心に揃えて1つのオブジェクトにjoinして返す"""
     before = set(bpy.data.objects)
@@ -55,6 +108,10 @@ def import_glb_scaled(filepath, target_height_m, name):
         bpy.ops.object.join()
     obj = bpy.context.view_layer.objects.active
     obj.name = name
+
+    if strip_thin_base:
+        obj = strip_thin_base_slab(obj)
+        obj.name = name
 
     bpy.ops.object.select_all(action="DESELECT")
     obj.select_set(True)
@@ -99,7 +156,7 @@ def import_glb_scaled(filepath, target_height_m, name):
 # 1. 被写体の配置(scene_analysis.mdの見積もりに基づく)
 # ---------------------------------------------------------------
 # ベンチ: 前景・カメラから約5m・全長1.6m
-bench = import_glb_scaled(os.path.join(ASSET_DIR, "bench.glb"), target_height_m=0.9, name="Bench")
+bench = import_glb_scaled(os.path.join(ASSET_DIR, "bench.glb"), target_height_m=0.9, name="Bench", strip_thin_base=True)
 bench.location = (-2.2, 5.0, 0.0)
 bench.rotation_euler = (0, 0, math.radians(20))
 
