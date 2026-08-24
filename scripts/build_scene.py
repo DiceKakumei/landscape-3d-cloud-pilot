@@ -119,17 +119,33 @@ wnt = world.node_tree
 wnt.nodes.clear()
 w_out = wnt.nodes.new("ShaderNodeOutputWorld")
 background = wnt.nodes.new("ShaderNodeBackground")
+# Nishitaは物理輝度が強すぎて露出制御が難しいため、手動グラデーションの空にする
+# (色と明るさを直接指定でき、露出を完全にコントロールできる)
+tex_coord = wnt.nodes.new("ShaderNodeTexCoord")
+sep_xyz = wnt.nodes.new("ShaderNodeSeparateXYZ")
+sky_ramp = wnt.nodes.new("ShaderNodeValToRGB")
+sky_ramp.color_ramp.elements[0].position = 0.0
+sky_ramp.color_ramp.elements[0].color = (0.75, 0.80, 0.82, 1.0)  # 地平線付近(白っぽい水色)
+sky_ramp.color_ramp.elements[1].position = 1.0
+sky_ramp.color_ramp.elements[1].color = (0.30, 0.48, 0.70, 1.0)  # 天頂(濃い青)
 background.inputs["Strength"].default_value = 1.0
-sky_tex = wnt.nodes.new("ShaderNodeTexSky")
-sky_tex.sky_type = "NISHITA"
-sky_tex.sun_elevation = math.radians(20)
-sky_tex.sun_rotation = math.radians(250)  # 右奥方向
-sky_tex.sun_intensity = 1.0
-wnt.links.new(sky_tex.outputs["Color"], background.inputs["Color"])
+
+wnt.links.new(tex_coord.outputs["Generated"], sep_xyz.inputs["Vector"])
+wnt.links.new(sep_xyz.outputs["Z"], sky_ramp.inputs["Fac"])
+wnt.links.new(sky_ramp.outputs["Color"], background.inputs["Color"])
 wnt.links.new(background.outputs["Background"], w_out.inputs["Surface"])
-# NishitaのSky Textureは太陽そのものを光源として含む(Cycles上でMISにより実際に
-# シャドウを落とす)ため、別途Sunランプを追加すると光源が二重になり白飛びする。
-# ここでは追加のSunランプは置かない。
+
+bpy.ops.object.light_add(type="SUN", location=(0, 0, 20))
+sun = bpy.context.active_object
+sun.name = "Sun"
+sun.data.energy = 3.0
+sun.data.angle = math.radians(1.5)
+# 元画像: 光源は右奥やや低い高度、影は左手前に伸びる
+sun.rotation_euler = (
+    math.radians(90) - math.radians(20),  # 仰角20°
+    0,
+    math.radians(250),  # 方位角(右奥方向)
+)
 
 # ---------------------------------------------------------------
 # 4. カメラ(元画像の水平線位置・目線の高さを再現)
