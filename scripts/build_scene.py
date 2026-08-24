@@ -118,24 +118,18 @@ world.use_nodes = True
 wnt = world.node_tree
 wnt.nodes.clear()
 w_out = wnt.nodes.new("ShaderNodeOutputWorld")
+background = wnt.nodes.new("ShaderNodeBackground")
+background.inputs["Strength"].default_value = 1.0
 sky_tex = wnt.nodes.new("ShaderNodeTexSky")
 sky_tex.sky_type = "NISHITA"
 sky_tex.sun_elevation = math.radians(20)
 sky_tex.sun_rotation = math.radians(250)  # 右奥方向
 sky_tex.sun_intensity = 1.0
-wnt.links.new(sky_tex.outputs["Color"], w_out.inputs["Surface"])
-
-bpy.ops.object.light_add(type="SUN", location=(0, 0, 20))
-sun = bpy.context.active_object
-sun.name = "Sun"
-sun.data.energy = 3.0
-sun.data.angle = math.radians(1.5)
-# sun_elevationはXY平面からの仰角、sun_rotationはZ軸まわりの方位角に対応させる
-sun.rotation_euler = (
-    math.radians(90) - math.radians(20),
-    0,
-    math.radians(250),
-)
+wnt.links.new(sky_tex.outputs["Color"], background.inputs["Color"])
+wnt.links.new(background.outputs["Background"], w_out.inputs["Surface"])
+# NishitaのSky Textureは太陽そのものを光源として含む(Cycles上でMISにより実際に
+# シャドウを落とす)ため、別途Sunランプを追加すると光源が二重になり白飛びする。
+# ここでは追加のSunランプは置かない。
 
 # ---------------------------------------------------------------
 # 4. カメラ(元画像の水平線位置・目線の高さを再現)
@@ -178,14 +172,18 @@ vignette_mix = ctree.nodes.new("CompositorNodeMixRGB")
 vignette_mix.blend_type = "MULTIPLY"
 vignette_mix.inputs[0].default_value = 0.25
 ellipse = ctree.nodes.new("CompositorNodeEllipseMask")
-ellipse.width = 0.85
-ellipse.height = 0.85
+ellipse.width = 0.9
+ellipse.height = 0.9
+ellipse_blur = ctree.nodes.new("CompositorNodeBlur")
+ellipse_blur.size_x = 60
+ellipse_blur.size_y = 60
 composite = ctree.nodes.new("CompositorNodeComposite")
 
 ctree.links.new(rlayers.outputs["Image"], color_balance.inputs["Image"])
 ctree.links.new(color_balance.outputs["Image"], glare.inputs["Image"])
 ctree.links.new(glare.outputs["Image"], vignette_mix.inputs[1])
-ctree.links.new(ellipse.outputs["Mask"], vignette_mix.inputs[2])
+ctree.links.new(ellipse.outputs["Mask"], ellipse_blur.inputs["Image"])
+ctree.links.new(ellipse_blur.outputs["Image"], vignette_mix.inputs[2])
 ctree.links.new(vignette_mix.outputs["Image"], composite.inputs["Image"])
 
 # ---------------------------------------------------------------
