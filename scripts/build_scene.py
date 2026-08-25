@@ -267,7 +267,7 @@ sky_ramp.color_ramp.elements.new(0.35)
 sky_ramp.color_ramp.elements[1].color = (0.72, 0.79, 0.83, 1.0)  # 中間(薄い水色)
 sky_ramp.color_ramp.elements[2].position = 1.0
 sky_ramp.color_ramp.elements[2].color = (0.30, 0.48, 0.70, 1.0)  # 天頂(濃い青)
-background.inputs["Strength"].default_value = 1.4  # 影が暗くなりすぎてposterizeで黒潰れするのを防ぐ
+background.inputs["Strength"].default_value = 1.15  # 影が暗くなりすぎてposterizeで黒潰れするのを防ぐ
 
 # 雲のような薄いムラを空全体に重ねる(1回目の調整では効果が弱すぎたため強めた)
 cloud_noise = wnt.nodes.new("ShaderNodeTexNoise")
@@ -374,7 +374,7 @@ hue_sat.inputs["Saturation"].default_value = 1.15  # 1.35だと茶色が赤に�
 # 底上げだけでは直らない(ライト側でいくら明るくしても遮られた場所は暗いまま)。
 # ガンマ<1のカーブでシャドウだけを持ち上げ、posterizeで黒一色に潰れるのを防ぐ。
 shadow_lift = ctree.nodes.new("CompositorNodeGamma")
-shadow_lift.inputs["Gamma"].default_value = 0.55
+shadow_lift.inputs["Gamma"].default_value = 0.72  # 0.55だと画面全体が白っぽく霞んで見えたため弱めた
 
 kuwahara = ctree.nodes.new("CompositorNodeKuwahara")
 kuwahara.variation = "CLASSIC"
