@@ -172,6 +172,22 @@ bench.rotation_euler = (0, 0, math.radians(20))
 # 木: 中景・カメラから約20m(ベンチの4倍)・樹高8m
 tree = import_glb_scaled(os.path.join(ASSET_DIR, "tree.glb"), target_height_m=8.0, name="Tree")
 tree.location = (5.5, 20.0, 0.0)
+bpy.context.view_layer.update()
+
+# 診断: 幹が本当に描画時に存在するか、高さ帯ごとの水平方向の広がりを確認する
+_tv = [tree.matrix_world @ v.co for v in tree.data.vertices]
+_tz0 = min(v.z for v in _tv)
+_th = max(v.z for v in _tv) - _tz0
+for _lo, _hi in [(0.0, 0.05), (0.05, 0.15), (0.15, 0.30), (0.30, 0.45), (0.45, 0.60)]:
+    _lo_z, _hi_z = _tz0 + _lo * _th, _tz0 + _hi * _th
+    _pts = [v for v in _tv if _lo_z <= v.z < _hi_z]
+    if _pts:
+        _xs = [p.x for p in _pts]
+        _ys = [p.y for p in _pts]
+        print(f"[tree-debug] z {_lo:.2f}-{_hi:.2f} (world z {_lo_z:.2f}-{_hi_z:.2f}): n={len(_pts)} "
+              f"x_span={max(_xs)-min(_xs):.3f} y_span={max(_ys)-min(_ys):.3f}")
+    else:
+        print(f"[tree-debug] z {_lo:.2f}-{_hi:.2f}: no verts")
 
 # ---------------------------------------------------------------
 # 2. 地面(平坦な芝生プレーン)
