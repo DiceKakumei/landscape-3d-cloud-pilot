@@ -85,9 +85,9 @@ def apply_toon_shading(mat, bands=((0.0, 0.45), (0.4, 0.8), (0.75, 1.2))):
     nt.links.new(base_color_output, color_lift.inputs["Color"])
     nt.links.new(diffuse.outputs["BSDF"], shader_to_rgb.inputs["Shader"])
     nt.links.new(shader_to_rgb.outputs["Color"], ramp.inputs["Fac"])
-    nt.links.new(color_lift.outputs["Image"], shade_mix.inputs[1])
+    nt.links.new(color_lift.outputs["Color"], shade_mix.inputs[1])
     nt.links.new(ramp.outputs["Color"], shade_mix.inputs[2])
-    nt.links.new(shade_mix.outputs["Image"], emission.inputs["Color"])
+    nt.links.new(shade_mix.outputs["Color"], emission.inputs["Color"])
     nt.links.new(emission.outputs["Emission"], output.inputs["Surface"])
 
 
