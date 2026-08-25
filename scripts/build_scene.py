@@ -337,6 +337,18 @@ scene.render.resolution_y = 720
 scene.render.resolution_percentage = 100
 scene.render.film_transparent = False
 
+# 輪郭線(イラスト調): 色のコントラストから輪郭を検出するSobel方式は、
+# 木の葉のような細部の多いテクスチャだと内部が輪郭だらけになり画面が
+# 真っ黒に潰れる不具合が出た。Freestyleは実際のメッシュのシルエット/
+# 稜線から幾何学的に線を引くため、テクスチャの細かさに影響されない。
+scene.render.use_freestyle = True
+view_layer = bpy.context.view_layer
+view_layer.use_freestyle = True
+freestyle_settings = view_layer.freestyle_settings
+lineset = freestyle_settings.linesets[0]
+lineset.linestyle.color = (0.05, 0.05, 0.05)
+lineset.linestyle.thickness = 2.2
+
 # ---------------------------------------------------------------
 # 6. コンポジット(色調補正・グレア・ビネット)
 # ---------------------------------------------------------------
@@ -366,38 +378,21 @@ haze_scale.inputs[1].default_value = 0.3
 # イラスト調スタイライズ: 彩度を上げてから、
 # 1) Kuwaharaフィルタで絵の具の面のような塗り分けにする(細部のノイズを消す)
 # 2) Posterizeで色数を落として平坦な塗りにする
-# 3) Sobelエッジ検出で輪郭線を作り、線画として乗算で重ねる
+# 輪郭線はコンポジット側のSobel検出ではなく、上のFreestyle(幾何学的な
+# シルエット検出)で既にRLayersの"Image"に焼き込まれている。
+# Sobelは色のコントラストだけで判定するため、木の葉のような細部の多い
+# テクスチャだと内部が輪郭だらけになり画面全体が真っ黒に潰れる不具合が
+# 実際に出た。Freestyleはメッシュの実ジオメトリから線を引くため、
+# テクスチャの細かさに影響されずに済む。
 hue_sat = ctree.nodes.new("CompositorNodeHueSat")
 hue_sat.inputs["Saturation"].default_value = 1.15  # 1.35だと茶色が赤に転んだため弱めた
 
 kuwahara = ctree.nodes.new("CompositorNodeKuwahara")
 kuwahara.variation = "CLASSIC"
-kuwahara.uniformity = 8
+kuwahara.uniformity = 12
 
 posterize = ctree.nodes.new("CompositorNodePosterize")
 posterize.inputs["Steps"].default_value = 7
-
-# 輪郭線はKuwahara+Posterizeで塗り分けた後の「面」から検出する。
-# 塗りつぶし前のシャープな画像から検出すると、木の葉のような細部の
-# 多いテクスチャでエッジだらけになり、そこが真っ黒に潰れてしまう
-# (実際に木の樹冠が真っ黒になる不具合が出た)。
-edge_sobel = ctree.nodes.new("CompositorNodeFilter")
-edge_sobel.filter_type = "SOBEL"
-edge_bw = ctree.nodes.new("CompositorNodeRGBToBW")
-edge_strength = ctree.nodes.new("CompositorNodeMath")
-edge_strength.operation = "MULTIPLY"
-edge_strength.inputs[1].default_value = 2.0
-edge_clamp = ctree.nodes.new("CompositorNodeMath")
-edge_clamp.operation = "MINIMUM"
-edge_clamp.inputs[1].default_value = 1.0
-edge_invert = ctree.nodes.new("CompositorNodeMath")
-edge_invert.operation = "SUBTRACT"
-edge_invert.use_clamp = True
-edge_invert.inputs[0].default_value = 1.0
-
-line_mix = ctree.nodes.new("CompositorNodeMixRGB")
-line_mix.blend_type = "MULTIPLY"
-line_mix.inputs[0].default_value = 1.0
 
 composite = ctree.nodes.new("CompositorNodeComposite")
 
@@ -410,16 +405,7 @@ ctree.links.new(haze_scale.outputs["Value"], haze_mix.inputs[0])
 ctree.links.new(haze_mix.outputs["Image"], hue_sat.inputs["Image"])
 ctree.links.new(hue_sat.outputs["Image"], kuwahara.inputs["Image"])
 ctree.links.new(kuwahara.outputs["Image"], posterize.inputs["Image"])
-
-ctree.links.new(posterize.outputs["Image"], edge_sobel.inputs["Image"])
-ctree.links.new(edge_sobel.outputs["Image"], edge_bw.inputs["Image"])
-ctree.links.new(edge_bw.outputs["Val"], edge_strength.inputs[0])
-ctree.links.new(edge_strength.outputs["Value"], edge_clamp.inputs[0])
-ctree.links.new(edge_clamp.outputs["Value"], edge_invert.inputs[1])
-
-ctree.links.new(posterize.outputs["Image"], line_mix.inputs[1])
-ctree.links.new(edge_invert.outputs["Value"], line_mix.inputs[2])
-ctree.links.new(line_mix.outputs["Image"], composite.inputs["Image"])
+ctree.links.new(posterize.outputs["Image"], composite.inputs["Image"])
 
 # ---------------------------------------------------------------
 # 7. 出力
