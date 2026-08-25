@@ -376,6 +376,14 @@ hue_sat.inputs["Saturation"].default_value = 1.15  # 1.35だと茶色が赤に�
 shadow_lift = ctree.nodes.new("CompositorNodeGamma")
 shadow_lift.inputs["Gamma"].default_value = 0.72  # 0.55だと画面全体が白っぽく霞んで見えたため弱めた
 
+# 木の葉のような1ピクセル単位で細かく色が変わるテクスチャをそのままKuwaharaに
+# 渡すと、Kuwahara(4分割した領域から最も均一な部分を選ぶ方式)の判定が
+# 隣接ピクセルごとに不安定に入れ替わり、市松模様のようなブロックノイズに
+# なる不具合が実際に出た。事前に軽くぼかして高周波の細部を落としておく。
+pre_blur = ctree.nodes.new("CompositorNodeBlur")
+pre_blur.size_x = 6
+pre_blur.size_y = 6
+
 kuwahara = ctree.nodes.new("CompositorNodeKuwahara")
 kuwahara.variation = "CLASSIC"
 kuwahara.uniformity = 8
@@ -402,7 +410,8 @@ ctree.links.new(haze_scale.outputs["Value"], haze_mix.inputs[0])
 
 ctree.links.new(haze_mix.outputs["Image"], hue_sat.inputs["Image"])
 ctree.links.new(hue_sat.outputs["Image"], shadow_lift.inputs["Image"])
-ctree.links.new(shadow_lift.outputs["Image"], kuwahara.inputs["Image"])
+ctree.links.new(shadow_lift.outputs["Image"], pre_blur.inputs["Image"])
+ctree.links.new(pre_blur.outputs["Image"], kuwahara.inputs["Image"])
 ctree.links.new(kuwahara.outputs["Image"], posterize.inputs["Image"])
 ctree.links.new(posterize.outputs["Image"], composite.inputs["Image"])
 
