@@ -28,6 +28,69 @@ scene = bpy.context.scene
 scene.unit_settings.system = "METRIC"
 
 
+def apply_toon_shading(mat, bands=((0.0, 0.45), (0.4, 0.8), (0.75, 1.2))):
+    """マテリアルをセルシェーディング(トゥーン)化する。
+
+    コンポジット後処理のKuwahara+Posterizeは、木の葉のように1ピクセル単位で
+    色が変わるテクスチャに対して不安定(市松模様のノイズ・全体が黒に潰れる等)
+    になる不具合が実際に何度も出た。正攻法として、マテリアル側で
+    Diffuse BSDF → Shader to RGB → ColorRamp(CONSTANT補間)で
+    「陰影(明るさ)」だけを階調バンドに量子化し、それを元のBase Colorに
+    掛け合わせる。色そのものの情報(葉の色ムラ等)はそのまま保持しつつ、
+    陰影だけがフラットな面になるため、テクスチャの細かさに影響されず
+    ノイズが出ない。
+
+    bandsは (閾値, 明るさ倍率) のタプルのリスト。閾値は昇順。
+    """
+    nt = mat.node_tree
+    bsdf = next((n for n in nt.nodes if n.type == "BSDF_PRINCIPLED"), None)
+    output = next((n for n in nt.nodes if n.type == "OUTPUT_MATERIAL"), None)
+    if bsdf is None or output is None:
+        return
+
+    base_color_socket = bsdf.inputs["Base Color"]
+    if base_color_socket.is_linked:
+        base_color_output = base_color_socket.links[0].from_socket
+    else:
+        rgb_node = nt.nodes.new("ShaderNodeRGB")
+        rgb_node.outputs[0].default_value = base_color_socket.default_value
+        base_color_output = rgb_node.outputs[0]
+
+    # ベースカラー自体に暗い陰影が焼き込まれている場合(Meshyのimage-to-3d
+    # テクスチャ等)に備え、ガンマで底上げしておく。実際に木のテクスチャが
+    # これで一部黒に潰れていた。
+    color_lift = nt.nodes.new("ShaderNodeGamma")
+    color_lift.inputs["Gamma"].default_value = 0.6
+
+    diffuse = nt.nodes.new("ShaderNodeBsdfDiffuse")
+    shader_to_rgb = nt.nodes.new("ShaderNodeShaderToRGB")
+    ramp = nt.nodes.new("ShaderNodeValToRGB")
+    ramp.color_ramp.interpolation = "CONSTANT"
+    elements = ramp.color_ramp.elements
+    while len(elements) > 1:
+        elements.remove(elements[-1])
+    pos0, val0 = bands[0]
+    elements[0].position = pos0
+    elements[0].color = (val0, val0, val0, 1.0)
+    for pos, val in bands[1:]:
+        e = elements.new(pos)
+        e.color = (val, val, val, 1.0)
+
+    shade_mix = nt.nodes.new("ShaderNodeMixRGB")
+    shade_mix.blend_type = "MULTIPLY"
+    shade_mix.inputs[0].default_value = 1.0
+
+    emission = nt.nodes.new("ShaderNodeEmission")
+
+    nt.links.new(base_color_output, color_lift.inputs["Color"])
+    nt.links.new(diffuse.outputs["BSDF"], shader_to_rgb.inputs["Shader"])
+    nt.links.new(shader_to_rgb.outputs["Color"], ramp.inputs["Fac"])
+    nt.links.new(color_lift.outputs["Image"], shade_mix.inputs[1])
+    nt.links.new(ramp.outputs["Color"], shade_mix.inputs[2])
+    nt.links.new(shade_mix.outputs["Image"], emission.inputs["Color"])
+    nt.links.new(emission.outputs["Emission"], output.inputs["Surface"])
+
+
 def build_bench(length=1.6, depth=0.5, seat_height=0.4, total_height=0.9, name="Bench"):
     """Meshyのimage-to-3dは脚の間の空間を閉じたメッシュにするため厚い板で
     埋めてしまう(bench2.glbで実測確認済み: 底面から高さ30%までのX-Z footprint
@@ -88,6 +151,7 @@ def build_bench(length=1.6, depth=0.5, seat_height=0.4, total_height=0.9, name="
     bsdf.inputs["Base Color"].default_value = (0.30, 0.20, 0.12, 1.0)
     bsdf.inputs["Roughness"].default_value = 0.9  # 座面だけ光沢で白飛びして見えるのを抑える
     obj.data.materials.append(mat)
+    apply_toon_shading(mat)
 
     verts = [obj.matrix_world @ v.co for v in obj.data.vertices]
     print(f"[check] {name}: min_z={min(v.z for v in verts):.4f} max_z={max(v.z for v in verts):.4f}")
@@ -179,6 +243,9 @@ tree = import_glb_scaled(os.path.join(ASSET_DIR, "tree.glb"), target_height_m=8.
 tree.location.x += 3.2
 tree.location.y += 14.0
 bpy.context.view_layer.update()
+for m in tree.data.materials:
+    if m is not None:
+        apply_toon_shading(m)
 
 # ---------------------------------------------------------------
 # 2. 地面(平坦な芝生プレーン)
@@ -244,6 +311,7 @@ nt.links.new(mix_color.outputs["Color"], bsdf.inputs["Base Color"])
 nt.links.new(bump.outputs["Normal"], bsdf.inputs["Normal"])
 nt.links.new(bsdf.outputs["BSDF"], out.inputs["Surface"])
 ground.data.materials.append(grass_mat)
+apply_toon_shading(grass_mat)
 
 # ---------------------------------------------------------------
 # 3. ワールド(空)・太陽光
@@ -267,7 +335,7 @@ sky_ramp.color_ramp.elements.new(0.35)
 sky_ramp.color_ramp.elements[1].color = (0.72, 0.79, 0.83, 1.0)  # 中間(薄い水色)
 sky_ramp.color_ramp.elements[2].position = 1.0
 sky_ramp.color_ramp.elements[2].color = (0.30, 0.48, 0.70, 1.0)  # 天頂(濃い青)
-background.inputs["Strength"].default_value = 1.15  # 影が暗くなりすぎてposterizeで黒潰れするのを防ぐ
+background.inputs["Strength"].default_value = 1.0  # トゥーンシェーディングに切り替えたので明るさの底上げは不要
 
 # 雲のような薄いムラを空全体に重ねる(1回目の調整では効果が弱すぎたため強めた)
 cloud_noise = wnt.nodes.new("ShaderNodeTexNoise")
@@ -364,42 +432,15 @@ haze_scale = ctree.nodes.new("CompositorNodeMath")
 haze_scale.operation = "MULTIPLY"
 haze_scale.inputs[1].default_value = 0.3
 
-# イラスト調スタイライズ: 彩度を上げてから、
-# 1) Kuwaharaフィルタで絵の具の面のような塗り分けにする(細部のノイズを消す)
-# 2) Posterizeで色数を落として平坦な塗りにする
+# イラスト調の塗り分け自体はマテリアル側のトゥーンシェーディング
+# (apply_toon_shading: Diffuse→Shader to RGB→ColorRampで陰影を階調バンド化)
+# で完結している。コンポジット側では軽い彩度調整のみ行う。
+# 過去に試したコンポジット後処理のKuwahara+Posterizeは、木の葉のように
+# 1ピクセル単位で色が変わるテクスチャに対して不安定(市松模様のブロック
+# ノイズ・全体が黒に潰れる等)になる不具合が繰り返し出たため撤去した。
 hue_sat = ctree.nodes.new("CompositorNodeHueSat")
 hue_sat.inputs["Saturation"].default_value = 1.15  # 1.35だと茶色が赤に転んだため弱めた
 
-# 木の葉が密集した内部は、実際の自己遮蔽(AO)で物理的に暗く、露出/環境光の
-# 底上げだけでは直らない(ライト側でいくら明るくしても遮られた場所は暗いまま)。
-# ガンマ<1のカーブでシャドウだけを持ち上げ、posterizeで黒一色に潰れるのを防ぐ。
-shadow_lift = ctree.nodes.new("CompositorNodeGamma")
-shadow_lift.inputs["Gamma"].default_value = 0.72  # 0.55だと画面全体が白っぽく霞んで見えたため弱めた
-
-# 木の葉のような1ピクセル単位で細かく色が変わるテクスチャをそのままKuwaharaに
-# 渡すと、Kuwahara(4分割した領域から最も均一な部分を選ぶ方式)の判定が
-# 隣接ピクセルごとに不安定に入れ替わり、市松模様のようなブロックノイズに
-# なる不具合が実際に出た。事前に軽くぼかして高周波の細部を落としておく。
-pre_blur = ctree.nodes.new("CompositorNodeBlur")
-pre_blur.size_x = 6
-pre_blur.size_y = 6
-
-kuwahara = ctree.nodes.new("CompositorNodeKuwahara")
-kuwahara.variation = "CLASSIC"
-kuwahara.uniformity = 8
-
-posterize = ctree.nodes.new("CompositorNodePosterize")
-posterize.inputs["Steps"].default_value = 10  # 7だと暗い緑の階調が足りず黒に丸められた
-
-# 輪郭線(黒い縁取り線)は今回見送る。試した2方式とも実用に耐えなかった:
-#   - 色ベースのSobel: 木の葉のような細部の多いテクスチャで内部が
-#     輪郭だらけになり真っ黒に潰れる。posterize後の画像から検出しても同様。
-#   - 深度(Z)ベースのSobel: 葉の実ジオメトリの起伏でcanopy内部が
-#     同様に潰れる上、地面が水平線に近づくほど深度勾配が発散するため
-#     水平線に太い黒帯が出る(遠近法でdepthが漸近的に増大するため)。
-# Kuwahara(絵の具のような塗り分け)+Posterize(色数を落とす)+彩度強調
-# だけでも、輪郭線なしの「フラットな塗りのイラスト」としては十分に
-# スタイライズされた見た目になる。
 composite = ctree.nodes.new("CompositorNodeComposite")
 
 ctree.links.new(rlayers.outputs["Image"], color_balance.inputs["Image"])
@@ -409,11 +450,7 @@ ctree.links.new(rlayers.outputs["Mist"], haze_scale.inputs[0])
 ctree.links.new(haze_scale.outputs["Value"], haze_mix.inputs[0])
 
 ctree.links.new(haze_mix.outputs["Image"], hue_sat.inputs["Image"])
-ctree.links.new(hue_sat.outputs["Image"], shadow_lift.inputs["Image"])
-ctree.links.new(shadow_lift.outputs["Image"], pre_blur.inputs["Image"])
-ctree.links.new(pre_blur.outputs["Image"], kuwahara.inputs["Image"])
-ctree.links.new(kuwahara.outputs["Image"], posterize.inputs["Image"])
-ctree.links.new(posterize.outputs["Image"], composite.inputs["Image"])
+ctree.links.new(hue_sat.outputs["Image"], composite.inputs["Image"])
 
 # ---------------------------------------------------------------
 # 7. 出力
