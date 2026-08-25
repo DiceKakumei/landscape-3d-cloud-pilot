@@ -165,13 +165,18 @@ def import_glb_scaled(filepath, target_height_m, name):
 # 1. 被写体の配置(scene_analysis.mdの見積もりに基づく)
 # ---------------------------------------------------------------
 # ベンチ: 前景・カメラから約5m・全長1.6m
+# 注意: import_glb_scaled/build_bench は内部でオブジェクト原点を「接地面の中心(0,0,0)」に
+# 揃えている。ここで location をまるごと上書きすると、その補正量(特にZ)が消えて
+# 地面にめり込む/浮くバグになるため、必ず加算(+=)で配置すること。
 bench = build_bench(length=1.6, depth=0.5, seat_height=0.4, total_height=0.9, name="Bench")
-bench.location = (-2.2, 5.0, 0.0)
+bench.location.x += -2.2
+bench.location.y += 5.0
 bench.rotation_euler = (0, 0, math.radians(20))
 
 # 木: 中景・カメラから約20m(ベンチの4倍)・樹高8m
 tree = import_glb_scaled(os.path.join(ASSET_DIR, "tree.glb"), target_height_m=8.0, name="Tree")
-tree.location = (5.5, 20.0, 0.0)
+tree.location.x += 5.5
+tree.location.y += 20.0
 bpy.context.view_layer.update()
 
 # 診断: 幹が本当に描画時に存在するか、高さ帯ごとの水平方向の広がりを確認する
