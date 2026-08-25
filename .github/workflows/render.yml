@@ -1,11 +1,17 @@
-name: Render landscape pilot
+name: Render landscape scene
+
+# 使い方:
+# gh workflow run render.yml -f assets_json='[{"name":"tree.glb","url":"https://..."},{"name":"rock.glb","url":"https://..."}]'
+# build_scene.py 側で bpy プリミティブ組み立てのみで済むオブジェクト(ベンチ等)は
+# glb を経由しないので、assets_json に含める必要はない。
 
 on:
   workflow_dispatch:
     inputs:
-      tree_glb_url:
-        description: "tree.glb の署名付きダウンロードURL(ベンチはbpyプリミティブで生成するため不要)"
-        required: true
+      assets_json:
+        description: '[{"name":"tree.glb","url":"https://..."}, ...] 形式のJSON配列(Meshyの署名付きURLは発行から約3日で失効するため、直前に取り直してから渡すこと)'
+        required: false
+        default: "[]"
 
 jobs:
   render:
@@ -24,7 +30,13 @@ jobs:
       - name: Download assets
         run: |
           mkdir -p assets output
-          curl -L -o assets/tree.glb "${{ inputs.tree_glb_url }}"
+          echo '${{ inputs.assets_json }}' > assets.json
+          jq -c '.[]' assets.json | while read -r item; do
+            name=$(echo "$item" | jq -r '.name')
+            url=$(echo "$item" | jq -r '.url')
+            echo "downloading $name"
+            curl -L -o "assets/$name" "$url"
+          done
           ls -la assets
 
       - name: Build scene and render
@@ -33,7 +45,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: landscape-pilot-render
+          name: landscape-render
           path: |
             output/render.png
             output/scene.blend
