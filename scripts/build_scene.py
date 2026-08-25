@@ -338,7 +338,7 @@ glare.mix = -0.3
 # 大気遠近: Mistパスを使って遠景ほど空の色(かすみ)を混ぜ、地平線の硬さを和らげる
 haze_mix = ctree.nodes.new("CompositorNodeMixRGB")
 haze_mix.blend_type = "MIX"
-haze_mix.inputs["Color2"].default_value = (0.80, 0.79, 0.76, 1.0)
+haze_mix.inputs[2].default_value = (0.80, 0.79, 0.76, 1.0)
 haze_gamma = ctree.nodes.new("CompositorNodeGamma")
 haze_gamma.inputs["Gamma"].default_value = 1.6  # 手前ではかすみをほぼ0に抑える
 
@@ -346,7 +346,7 @@ composite = ctree.nodes.new("CompositorNodeComposite")
 
 ctree.links.new(rlayers.outputs["Image"], color_balance.inputs["Image"])
 ctree.links.new(color_balance.outputs["Image"], glare.inputs["Image"])
-ctree.links.new(glare.outputs["Image"], haze_mix.inputs["Color1"])
+ctree.links.new(glare.outputs["Image"], haze_mix.inputs[1])
 ctree.links.new(rlayers.outputs["Mist"], haze_gamma.inputs["Value"])
 ctree.links.new(haze_gamma.outputs["Value"], haze_mix.inputs["Fac"])
 ctree.links.new(haze_mix.outputs["Image"], composite.inputs["Image"])
