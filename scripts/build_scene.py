@@ -86,7 +86,7 @@ def build_bench(length=1.6, depth=0.5, seat_height=0.4, total_height=0.9, name="
     mat.use_nodes = True
     bsdf = mat.node_tree.nodes.get("Principled BSDF")
     bsdf.inputs["Base Color"].default_value = (0.30, 0.20, 0.12, 1.0)
-    bsdf.inputs["Roughness"].default_value = 0.7
+    bsdf.inputs["Roughness"].default_value = 0.9  # 座面だけ光沢で白飛びして見えるのを抑える
     obj.data.materials.append(mat)
 
     verts = [obj.matrix_world @ v.co for v in obj.data.vertices]
@@ -169,14 +169,15 @@ def import_glb_scaled(filepath, target_height_m, name):
 # 揃えている。ここで location をまるごと上書きすると、その補正量(特にZ)が消えて
 # 地面にめり込む/浮くバグになるため、必ず加算(+=)で配置すること。
 bench = build_bench(length=1.6, depth=0.5, seat_height=0.4, total_height=0.9, name="Bench")
-bench.location.x += -2.2
-bench.location.y += 5.0
+bench.location.x += -1.6
+bench.location.y += 4.0
 bench.rotation_euler = (0, 0, math.radians(20))
 
-# 木: 中景・カメラから約20m(ベンチの4倍)・樹高8m
+# 木: 中景・カメラから約14m(ベンチの3.5倍)・樹高8m
+# (ベンチと木の間の空きスペースが広すぎたため、両者を少し中央寄りに詰めた)
 tree = import_glb_scaled(os.path.join(ASSET_DIR, "tree.glb"), target_height_m=8.0, name="Tree")
-tree.location.x += 5.5
-tree.location.y += 20.0
+tree.location.x += 3.2
+tree.location.y += 14.0
 bpy.context.view_layer.update()
 
 # ---------------------------------------------------------------
@@ -196,23 +197,24 @@ mapping = nt.nodes.new("ShaderNodeMapping")
 coord = nt.nodes.new("ShaderNodeTexCoord")
 
 # 大きい班(パッチ状のムラ)+ 細かいノイズ(芝の質感)を重ねて、のっぺり感をなくす
+# (1回目の調整では効果が弱すぎたため、スケール・コントラストとも大きく強めた)
 patch_noise = nt.nodes.new("ShaderNodeTexNoise")
-patch_noise.inputs["Scale"].default_value = 6.0
+patch_noise.inputs["Scale"].default_value = 2.5
 patch_noise.inputs["Detail"].default_value = 4.0
 patch_ramp = nt.nodes.new("ShaderNodeValToRGB")
-patch_ramp.color_ramp.elements[0].color = (0.15, 0.28, 0.08, 1.0)
-patch_ramp.color_ramp.elements[1].color = (0.32, 0.44, 0.18, 1.0)
+patch_ramp.color_ramp.elements[0].color = (0.10, 0.22, 0.05, 1.0)
+patch_ramp.color_ramp.elements[1].color = (0.38, 0.50, 0.20, 1.0)
 
 fine_noise = nt.nodes.new("ShaderNodeTexNoise")
-fine_noise.inputs["Scale"].default_value = 120.0
-fine_noise.inputs["Detail"].default_value = 6.0
+fine_noise.inputs["Scale"].default_value = 150.0
+fine_noise.inputs["Detail"].default_value = 8.0
 
 mix_color = nt.nodes.new("ShaderNodeMixRGB")
 mix_color.blend_type = "MULTIPLY"
-mix_color.inputs["Fac"].default_value = 0.25
+mix_color.inputs["Fac"].default_value = 0.5
 
 bump = nt.nodes.new("ShaderNodeBump")
-bump.inputs["Strength"].default_value = 0.15
+bump.inputs["Strength"].default_value = 0.3
 
 bsdf.inputs["Roughness"].default_value = 0.85
 
@@ -252,18 +254,18 @@ sky_ramp.color_ramp.elements[2].position = 1.0
 sky_ramp.color_ramp.elements[2].color = (0.30, 0.48, 0.70, 1.0)  # 天頂(濃い青)
 background.inputs["Strength"].default_value = 1.0
 
-# 雲のような薄いムラを空全体に重ねる(単色グラデーションだけだとのっぺりするため)
+# 雲のような薄いムラを空全体に重ねる(1回目の調整では効果が弱すぎたため強めた)
 cloud_noise = wnt.nodes.new("ShaderNodeTexNoise")
-cloud_noise.inputs["Scale"].default_value = 2.0
-cloud_noise.inputs["Detail"].default_value = 6.0
+cloud_noise.inputs["Scale"].default_value = 1.2
+cloud_noise.inputs["Detail"].default_value = 8.0
 cloud_ramp = wnt.nodes.new("ShaderNodeValToRGB")
-cloud_ramp.color_ramp.elements[0].position = 0.35
-cloud_ramp.color_ramp.elements[0].color = (0, 0, 0, 1)
-cloud_ramp.color_ramp.elements[1].position = 0.60
-cloud_ramp.color_ramp.elements[1].color = (0.95, 0.95, 0.95, 1)
+cloud_ramp.color_ramp.elements[0].position = 0.30
+cloud_ramp.color_ramp.elements[0].color = (0.05, 0.06, 0.08, 1)
+cloud_ramp.color_ramp.elements[1].position = 0.55
+cloud_ramp.color_ramp.elements[1].color = (1.0, 1.0, 1.0, 1)
 cloud_mix = wnt.nodes.new("ShaderNodeMixRGB")
 cloud_mix.blend_type = "MIX"
-cloud_mix.inputs["Fac"].default_value = 0.4
+cloud_mix.inputs["Fac"].default_value = 0.6
 
 wnt.links.new(tex_coord.outputs["Generated"], sep_xyz.inputs["Vector"])
 wnt.links.new(sep_xyz.outputs["Z"], sky_ramp.inputs["Fac"])
@@ -274,11 +276,18 @@ wnt.links.new(cloud_ramp.outputs["Color"], cloud_mix.inputs["Color2"])
 wnt.links.new(cloud_mix.outputs["Color"], background.inputs["Color"])
 wnt.links.new(background.outputs["Background"], w_out.inputs["Surface"])
 
+# 地平線が定規で引いたようにシャープすぎるとの指摘に対応: 大気遠近(かすみ)を
+# Mistパスで再現し、コンポジット側で遠景に空の色を薄く混ぜる
+world.mist_settings.start = 8.0
+world.mist_settings.depth = 45.0
+world.mist_settings.falloff = "QUADRATIC"
+bpy.context.view_layer.use_pass_mist = True
+
 bpy.ops.object.light_add(type="SUN", location=(0, 0, 20))
 sun = bpy.context.active_object
 sun.name = "Sun"
 sun.data.energy = 3.0
-sun.data.angle = math.radians(4.0)  # 影のエッジを柔らかくする(硬すぎるとの指摘対応)
+sun.data.angle = math.radians(10.0)  # 影のエッジを柔らかくする(4度でもまだ硬いとの指摘のため増加)
 # 元画像: 光源は右奥やや低い高度、影は左手前に伸びる
 sun.rotation_euler = (
     math.radians(90) - math.radians(20),  # 仰角20°
@@ -292,10 +301,10 @@ sun.rotation_euler = (
 bpy.ops.object.camera_add(location=(0, -1.0, 1.6))
 cam = bpy.context.active_object
 cam.name = "MainCamera"
-# 木(高さ8m、距離約21m)が画角上端で見切れないよう、
-# レンズを少し広角に・下向きの角度を弱めて画角を上側に確保する
-cam.rotation_euler = (math.radians(87), 0, 0)
-cam.data.lens = 28
+# 木(高さ8m、距離約15m)が画角上端で見切れないよう、
+# レンズを広角にし下向きの角度を弱めて画角の上側に余裕を持たせる
+cam.rotation_euler = (math.radians(85), 0, 0)
+cam.data.lens = 18
 scene.camera = cam
 
 # ---------------------------------------------------------------
@@ -303,7 +312,7 @@ scene.camera = cam
 # ---------------------------------------------------------------
 scene.render.engine = "CYCLES"
 scene.cycles.device = "CPU"
-scene.cycles.samples = 128
+scene.cycles.samples = 256
 scene.cycles.use_denoising = True
 scene.cycles.adaptive_threshold = 0.05
 scene.render.resolution_x = 1280
@@ -325,11 +334,22 @@ glare = ctree.nodes.new("CompositorNodeGlare")
 glare.glare_type = "FOG_GLOW"
 glare.threshold = 1.0
 glare.mix = -0.3
+
+# 大気遠近: Mistパスを使って遠景ほど空の色(かすみ)を混ぜ、地平線の硬さを和らげる
+haze_mix = ctree.nodes.new("CompositorNodeMixRGB")
+haze_mix.blend_type = "MIX"
+haze_mix.inputs["Color2"].default_value = (0.80, 0.79, 0.76, 1.0)
+haze_gamma = ctree.nodes.new("CompositorNodeGamma")
+haze_gamma.inputs["Gamma"].default_value = 1.6  # 手前ではかすみをほぼ0に抑える
+
 composite = ctree.nodes.new("CompositorNodeComposite")
 
 ctree.links.new(rlayers.outputs["Image"], color_balance.inputs["Image"])
 ctree.links.new(color_balance.outputs["Image"], glare.inputs["Image"])
-ctree.links.new(glare.outputs["Image"], composite.inputs["Image"])
+ctree.links.new(glare.outputs["Image"], haze_mix.inputs["Color1"])
+ctree.links.new(rlayers.outputs["Mist"], haze_gamma.inputs["Value"])
+ctree.links.new(haze_gamma.outputs["Value"], haze_mix.inputs["Fac"])
+ctree.links.new(haze_mix.outputs["Image"], composite.inputs["Image"])
 
 # ---------------------------------------------------------------
 # 7. 出力
