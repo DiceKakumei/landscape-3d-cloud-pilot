@@ -254,16 +254,16 @@ background.inputs["Strength"].default_value = 1.0
 
 # 雲のような薄いムラを空全体に重ねる(単色グラデーションだけだとのっぺりするため)
 cloud_noise = wnt.nodes.new("ShaderNodeTexNoise")
-cloud_noise.inputs["Scale"].default_value = 3.0
-cloud_noise.inputs["Detail"].default_value = 5.0
+cloud_noise.inputs["Scale"].default_value = 2.0
+cloud_noise.inputs["Detail"].default_value = 6.0
 cloud_ramp = wnt.nodes.new("ShaderNodeValToRGB")
-cloud_ramp.color_ramp.elements[0].position = 0.45
+cloud_ramp.color_ramp.elements[0].position = 0.35
 cloud_ramp.color_ramp.elements[0].color = (0, 0, 0, 1)
-cloud_ramp.color_ramp.elements[1].position = 0.65
-cloud_ramp.color_ramp.elements[1].color = (1, 1, 1, 1)
+cloud_ramp.color_ramp.elements[1].position = 0.60
+cloud_ramp.color_ramp.elements[1].color = (0.95, 0.95, 0.95, 1)
 cloud_mix = wnt.nodes.new("ShaderNodeMixRGB")
-cloud_mix.blend_type = "ADD"
-cloud_mix.inputs["Fac"].default_value = 0.12
+cloud_mix.blend_type = "MIX"
+cloud_mix.inputs["Fac"].default_value = 0.4
 
 wnt.links.new(tex_coord.outputs["Generated"], sep_xyz.inputs["Vector"])
 wnt.links.new(sep_xyz.outputs["Z"], sky_ramp.inputs["Fac"])
