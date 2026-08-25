@@ -337,15 +337,6 @@ scene.render.resolution_y = 720
 scene.render.resolution_percentage = 100
 scene.render.film_transparent = False
 
-# 輪郭線(イラスト調)の下準備: Zパス(深度)を有効にする。
-# 色のコントラストで輪郭を検出するSobel方式は、木の葉のような細部の多い
-# テクスチャだと内部が輪郭だらけになり画面全体が真っ黒に潰れる不具合が出た。
-# Freestyle(幾何学的なシルエット検出)も試したが、100万頂点超の
-# メッシュ(Meshy生成物)ではView map creationが数分経っても終わらず
-# 実用にならなかった。深度の不連続点だけを見るZパスSobelなら、
-# 同じ面の中の色ムラには反応せず、計算も軽い。
-view_layer = bpy.context.view_layer
-view_layer.use_pass_z = True
 
 # ---------------------------------------------------------------
 # 6. コンポジット(色調補正・グレア・ビネット)
@@ -386,35 +377,15 @@ kuwahara.uniformity = 12
 posterize = ctree.nodes.new("CompositorNodePosterize")
 posterize.inputs["Steps"].default_value = 7
 
-# 輪郭線: 深度(Z)パスの不連続点だけをSobelで検出する。同じ面の中の
-# 色ムラ(木の葉の陰影など)には反応せず、シルエット/物体同士の重なりの
-# 境界だけを拾えるため、色ベースのSobelやFreestyleより安定して軽い。
-depth_clamp = ctree.nodes.new("CompositorNodeMath")
-depth_clamp.operation = "MINIMUM"
-depth_clamp.inputs[1].default_value = 60.0  # 空(背景)は極端に大きい値になるため上限を切る
-depth_norm = ctree.nodes.new("CompositorNodeMath")
-depth_norm.operation = "DIVIDE"
-depth_norm.inputs[1].default_value = 60.0
-depth_rgb = ctree.nodes.new("CompositorNodeCombineColor")
-
-depth_sobel = ctree.nodes.new("CompositorNodeFilter")
-depth_sobel.filter_type = "SOBEL"
-depth_edge_bw = ctree.nodes.new("CompositorNodeRGBToBW")
-depth_edge_strength = ctree.nodes.new("CompositorNodeMath")
-depth_edge_strength.operation = "MULTIPLY"
-depth_edge_strength.inputs[1].default_value = 12.0  # 深度勾配は数値が小さいため大きく増幅する
-depth_edge_clamp = ctree.nodes.new("CompositorNodeMath")
-depth_edge_clamp.operation = "MINIMUM"
-depth_edge_clamp.inputs[1].default_value = 1.0
-depth_edge_invert = ctree.nodes.new("CompositorNodeMath")
-depth_edge_invert.operation = "SUBTRACT"
-depth_edge_invert.use_clamp = True
-depth_edge_invert.inputs[0].default_value = 1.0
-
-line_mix = ctree.nodes.new("CompositorNodeMixRGB")
-line_mix.blend_type = "MULTIPLY"
-line_mix.inputs[0].default_value = 1.0
-
+# 輪郭線(黒い縁取り線)は今回見送る。試した2方式とも実用に耐えなかった:
+#   - 色ベースのSobel: 木の葉のような細部の多いテクスチャで内部が
+#     輪郭だらけになり真っ黒に潰れる。posterize後の画像から検出しても同様。
+#   - 深度(Z)ベースのSobel: 葉の実ジオメトリの起伏でcanopy内部が
+#     同様に潰れる上、地面が水平線に近づくほど深度勾配が発散するため
+#     水平線に太い黒帯が出る(遠近法でdepthが漸近的に増大するため)。
+# Kuwahara(絵の具のような塗り分け)+Posterize(色数を落とす)+彩度強調
+# だけでも、輪郭線なしの「フラットな塗りのイラスト」としては十分に
+# スタイライズされた見た目になる。
 composite = ctree.nodes.new("CompositorNodeComposite")
 
 ctree.links.new(rlayers.outputs["Image"], color_balance.inputs["Image"])
@@ -426,21 +397,7 @@ ctree.links.new(haze_scale.outputs["Value"], haze_mix.inputs[0])
 ctree.links.new(haze_mix.outputs["Image"], hue_sat.inputs["Image"])
 ctree.links.new(hue_sat.outputs["Image"], kuwahara.inputs["Image"])
 ctree.links.new(kuwahara.outputs["Image"], posterize.inputs["Image"])
-
-ctree.links.new(rlayers.outputs["Depth"], depth_clamp.inputs[0])
-ctree.links.new(depth_clamp.outputs["Value"], depth_norm.inputs[0])
-ctree.links.new(depth_norm.outputs["Value"], depth_rgb.inputs["Red"])
-ctree.links.new(depth_norm.outputs["Value"], depth_rgb.inputs["Green"])
-ctree.links.new(depth_norm.outputs["Value"], depth_rgb.inputs["Blue"])
-ctree.links.new(depth_rgb.outputs["Image"], depth_sobel.inputs["Image"])
-ctree.links.new(depth_sobel.outputs["Image"], depth_edge_bw.inputs["Image"])
-ctree.links.new(depth_edge_bw.outputs["Val"], depth_edge_strength.inputs[0])
-ctree.links.new(depth_edge_strength.outputs["Value"], depth_edge_clamp.inputs[0])
-ctree.links.new(depth_edge_clamp.outputs["Value"], depth_edge_invert.inputs[1])
-
-ctree.links.new(posterize.outputs["Image"], line_mix.inputs[1])
-ctree.links.new(depth_edge_invert.outputs["Value"], line_mix.inputs[2])
-ctree.links.new(line_mix.outputs["Image"], composite.inputs["Image"])
+ctree.links.new(posterize.outputs["Image"], composite.inputs["Image"])
 
 # ---------------------------------------------------------------
 # 7. 出力
