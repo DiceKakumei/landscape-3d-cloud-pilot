@@ -267,7 +267,7 @@ sky_ramp.color_ramp.elements.new(0.35)
 sky_ramp.color_ramp.elements[1].color = (0.72, 0.79, 0.83, 1.0)  # 中間(薄い水色)
 sky_ramp.color_ramp.elements[2].position = 1.0
 sky_ramp.color_ramp.elements[2].color = (0.30, 0.48, 0.70, 1.0)  # 天頂(濃い青)
-background.inputs["Strength"].default_value = 1.0
+background.inputs["Strength"].default_value = 1.4  # 影が暗くなりすぎてposterizeで黒潰れするのを防ぐ
 
 # 雲のような薄いムラを空全体に重ねる(1回目の調整では効果が弱すぎたため強めた)
 cloud_noise = wnt.nodes.new("ShaderNodeTexNoise")
@@ -369,11 +369,10 @@ haze_scale.inputs[1].default_value = 0.3
 # 2) Posterizeで色数を落として平坦な塗りにする
 hue_sat = ctree.nodes.new("CompositorNodeHueSat")
 hue_sat.inputs["Saturation"].default_value = 1.15  # 1.35だと茶色が赤に転んだため弱めた
-hue_sat.inputs["Value"].default_value = 1.15  # 影になった葉がposterizeで黒に潰れないよう底上げ
 
 kuwahara = ctree.nodes.new("CompositorNodeKuwahara")
 kuwahara.variation = "CLASSIC"
-kuwahara.uniformity = 5  # 12だと木の樹冠全体が1つの暗い塗りに潰れてしまった
+kuwahara.uniformity = 8
 
 posterize = ctree.nodes.new("CompositorNodePosterize")
 posterize.inputs["Steps"].default_value = 10  # 7だと暗い緑の階調が足りず黒に丸められた
