@@ -179,21 +179,6 @@ tree.location.x += 5.5
 tree.location.y += 20.0
 bpy.context.view_layer.update()
 
-# 診断: 幹が本当に描画時に存在するか、高さ帯ごとの水平方向の広がりを確認する
-_tv = [tree.matrix_world @ v.co for v in tree.data.vertices]
-_tz0 = min(v.z for v in _tv)
-_th = max(v.z for v in _tv) - _tz0
-for _lo, _hi in [(0.0, 0.05), (0.05, 0.15), (0.15, 0.30), (0.30, 0.45), (0.45, 0.60)]:
-    _lo_z, _hi_z = _tz0 + _lo * _th, _tz0 + _hi * _th
-    _pts = [v for v in _tv if _lo_z <= v.z < _hi_z]
-    if _pts:
-        _xs = [p.x for p in _pts]
-        _ys = [p.y for p in _pts]
-        print(f"[tree-debug] z {_lo:.2f}-{_hi:.2f} (world z {_lo_z:.2f}-{_hi_z:.2f}): n={len(_pts)} "
-              f"x_span={max(_xs)-min(_xs):.3f} y_span={max(_ys)-min(_ys):.3f}")
-    else:
-        print(f"[tree-debug] z {_lo:.2f}-{_hi:.2f}: no verts")
-
 # ---------------------------------------------------------------
 # 2. 地面(平坦な芝生プレーン)
 # ---------------------------------------------------------------
@@ -207,20 +192,39 @@ nt = grass_mat.node_tree
 nt.nodes.clear()
 out = nt.nodes.new("ShaderNodeOutputMaterial")
 bsdf = nt.nodes.new("ShaderNodeBsdfPrincipled")
-noise = nt.nodes.new("ShaderNodeTexNoise")
-ramp = nt.nodes.new("ShaderNodeValToRGB")
 mapping = nt.nodes.new("ShaderNodeMapping")
 coord = nt.nodes.new("ShaderNodeTexCoord")
 
-noise.inputs["Scale"].default_value = 40.0
-ramp.color_ramp.elements[0].color = (0.16, 0.30, 0.09, 1.0)
-ramp.color_ramp.elements[1].color = (0.30, 0.42, 0.16, 1.0)
-bsdf.inputs["Roughness"].default_value = 0.9
+# 大きい班(パッチ状のムラ)+ 細かいノイズ(芝の質感)を重ねて、のっぺり感をなくす
+patch_noise = nt.nodes.new("ShaderNodeTexNoise")
+patch_noise.inputs["Scale"].default_value = 6.0
+patch_noise.inputs["Detail"].default_value = 4.0
+patch_ramp = nt.nodes.new("ShaderNodeValToRGB")
+patch_ramp.color_ramp.elements[0].color = (0.15, 0.28, 0.08, 1.0)
+patch_ramp.color_ramp.elements[1].color = (0.32, 0.44, 0.18, 1.0)
+
+fine_noise = nt.nodes.new("ShaderNodeTexNoise")
+fine_noise.inputs["Scale"].default_value = 120.0
+fine_noise.inputs["Detail"].default_value = 6.0
+
+mix_color = nt.nodes.new("ShaderNodeMixRGB")
+mix_color.blend_type = "MULTIPLY"
+mix_color.inputs["Fac"].default_value = 0.25
+
+bump = nt.nodes.new("ShaderNodeBump")
+bump.inputs["Strength"].default_value = 0.15
+
+bsdf.inputs["Roughness"].default_value = 0.85
 
 nt.links.new(coord.outputs["Generated"], mapping.inputs["Vector"])
-nt.links.new(mapping.outputs["Vector"], noise.inputs["Vector"])
-nt.links.new(noise.outputs["Fac"], ramp.inputs["Fac"])
-nt.links.new(ramp.outputs["Color"], bsdf.inputs["Base Color"])
+nt.links.new(mapping.outputs["Vector"], patch_noise.inputs["Vector"])
+nt.links.new(mapping.outputs["Vector"], fine_noise.inputs["Vector"])
+nt.links.new(patch_noise.outputs["Fac"], patch_ramp.inputs["Fac"])
+nt.links.new(patch_ramp.outputs["Color"], mix_color.inputs["Color1"])
+nt.links.new(fine_noise.outputs["Color"], mix_color.inputs["Color2"])
+nt.links.new(fine_noise.outputs["Fac"], bump.inputs["Height"])
+nt.links.new(mix_color.outputs["Color"], bsdf.inputs["Base Color"])
+nt.links.new(bump.outputs["Normal"], bsdf.inputs["Normal"])
 nt.links.new(bsdf.outputs["BSDF"], out.inputs["Surface"])
 ground.data.materials.append(grass_mat)
 
@@ -241,21 +245,40 @@ tex_coord = wnt.nodes.new("ShaderNodeTexCoord")
 sep_xyz = wnt.nodes.new("ShaderNodeSeparateXYZ")
 sky_ramp = wnt.nodes.new("ShaderNodeValToRGB")
 sky_ramp.color_ramp.elements[0].position = 0.0
-sky_ramp.color_ramp.elements[0].color = (0.75, 0.80, 0.82, 1.0)  # 地平線付近(白っぽい水色)
-sky_ramp.color_ramp.elements[1].position = 1.0
-sky_ramp.color_ramp.elements[1].color = (0.30, 0.48, 0.70, 1.0)  # 天頂(濃い青)
+sky_ramp.color_ramp.elements[0].color = (0.80, 0.79, 0.76, 1.0)  # 地平線付近(白っぽい暖色)
+sky_ramp.color_ramp.elements.new(0.35)
+sky_ramp.color_ramp.elements[1].color = (0.72, 0.79, 0.83, 1.0)  # 中間(薄い水色)
+sky_ramp.color_ramp.elements[2].position = 1.0
+sky_ramp.color_ramp.elements[2].color = (0.30, 0.48, 0.70, 1.0)  # 天頂(濃い青)
 background.inputs["Strength"].default_value = 1.0
+
+# 雲のような薄いムラを空全体に重ねる(単色グラデーションだけだとのっぺりするため)
+cloud_noise = wnt.nodes.new("ShaderNodeTexNoise")
+cloud_noise.inputs["Scale"].default_value = 3.0
+cloud_noise.inputs["Detail"].default_value = 5.0
+cloud_ramp = wnt.nodes.new("ShaderNodeValToRGB")
+cloud_ramp.color_ramp.elements[0].position = 0.45
+cloud_ramp.color_ramp.elements[0].color = (0, 0, 0, 1)
+cloud_ramp.color_ramp.elements[1].position = 0.65
+cloud_ramp.color_ramp.elements[1].color = (1, 1, 1, 1)
+cloud_mix = wnt.nodes.new("ShaderNodeMixRGB")
+cloud_mix.blend_type = "ADD"
+cloud_mix.inputs["Fac"].default_value = 0.12
 
 wnt.links.new(tex_coord.outputs["Generated"], sep_xyz.inputs["Vector"])
 wnt.links.new(sep_xyz.outputs["Z"], sky_ramp.inputs["Fac"])
-wnt.links.new(sky_ramp.outputs["Color"], background.inputs["Color"])
+wnt.links.new(tex_coord.outputs["Generated"], cloud_noise.inputs["Vector"])
+wnt.links.new(cloud_noise.outputs["Fac"], cloud_ramp.inputs["Fac"])
+wnt.links.new(sky_ramp.outputs["Color"], cloud_mix.inputs["Color1"])
+wnt.links.new(cloud_ramp.outputs["Color"], cloud_mix.inputs["Color2"])
+wnt.links.new(cloud_mix.outputs["Color"], background.inputs["Color"])
 wnt.links.new(background.outputs["Background"], w_out.inputs["Surface"])
 
 bpy.ops.object.light_add(type="SUN", location=(0, 0, 20))
 sun = bpy.context.active_object
 sun.name = "Sun"
 sun.data.energy = 3.0
-sun.data.angle = math.radians(1.5)
+sun.data.angle = math.radians(4.0)  # 影のエッジを柔らかくする(硬すぎるとの指摘対応)
 # 元画像: 光源は右奥やや低い高度、影は左手前に伸びる
 sun.rotation_euler = (
     math.radians(90) - math.radians(20),  # 仰角20°
@@ -269,8 +292,10 @@ sun.rotation_euler = (
 bpy.ops.object.camera_add(location=(0, -1.0, 1.6))
 cam = bpy.context.active_object
 cam.name = "MainCamera"
-cam.rotation_euler = (math.radians(80), 0, 0)
-cam.data.lens = 35
+# 木(高さ8m、距離約21m)が画角上端で見切れないよう、
+# レンズを少し広角に・下向きの角度を弱めて画角を上側に確保する
+cam.rotation_euler = (math.radians(87), 0, 0)
+cam.data.lens = 28
 scene.camera = cam
 
 # ---------------------------------------------------------------
@@ -278,7 +303,7 @@ scene.camera = cam
 # ---------------------------------------------------------------
 scene.render.engine = "CYCLES"
 scene.cycles.device = "CPU"
-scene.cycles.samples = 64
+scene.cycles.samples = 128
 scene.cycles.use_denoising = True
 scene.cycles.adaptive_threshold = 0.05
 scene.render.resolution_x = 1280
