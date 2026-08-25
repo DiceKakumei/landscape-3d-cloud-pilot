@@ -278,9 +278,11 @@ wnt.links.new(background.outputs["Background"], w_out.inputs["Surface"])
 
 # 地平線が定規で引いたようにシャープすぎるとの指摘に対応: 大気遠近(かすみ)を
 # Mistパスで再現し、コンポジット側で遠景に空の色を薄く混ぜる
-world.mist_settings.start = 8.0
-world.mist_settings.depth = 45.0
+world.mist_settings.start = 10.0
+world.mist_settings.depth = 15.0
 world.mist_settings.falloff = "QUADRATIC"
+# depthを短くして早めにFac=1.0で頭打ちにする: 広角レンズでは画面端ほど同じ行でも
+# 実距離が長くなるため、頭打ちにする前(遷移帯)が広いと水平線が弓なりに歪んで見える
 bpy.context.view_layer.use_pass_mist = True
 
 bpy.ops.object.light_add(type="SUN", location=(0, 0, 20))
