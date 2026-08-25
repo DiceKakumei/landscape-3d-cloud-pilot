@@ -368,22 +368,25 @@ haze_scale.inputs[1].default_value = 0.3
 # 2) Posterizeで色数を落として平坦な塗りにする
 # 3) Sobelエッジ検出で輪郭線を作り、線画として乗算で重ねる
 hue_sat = ctree.nodes.new("CompositorNodeHueSat")
-hue_sat.inputs["Saturation"].default_value = 1.35
+hue_sat.inputs["Saturation"].default_value = 1.15  # 1.35だと茶色が赤に転んだため弱めた
 
 kuwahara = ctree.nodes.new("CompositorNodeKuwahara")
-print("[debug] Kuwahara props:", [p.identifier for p in kuwahara.bl_rna.properties if not p.is_readonly])
-if hasattr(kuwahara, "size"):
-    kuwahara.size = 8
+kuwahara.variation = "CLASSIC"
+kuwahara.uniformity = 8
 
 posterize = ctree.nodes.new("CompositorNodePosterize")
 posterize.inputs["Steps"].default_value = 7
 
+# 輪郭線はKuwahara+Posterizeで塗り分けた後の「面」から検出する。
+# 塗りつぶし前のシャープな画像から検出すると、木の葉のような細部の
+# 多いテクスチャでエッジだらけになり、そこが真っ黒に潰れてしまう
+# (実際に木の樹冠が真っ黒になる不具合が出た)。
 edge_sobel = ctree.nodes.new("CompositorNodeFilter")
 edge_sobel.filter_type = "SOBEL"
 edge_bw = ctree.nodes.new("CompositorNodeRGBToBW")
 edge_strength = ctree.nodes.new("CompositorNodeMath")
 edge_strength.operation = "MULTIPLY"
-edge_strength.inputs[1].default_value = 3.0
+edge_strength.inputs[1].default_value = 2.0
 edge_clamp = ctree.nodes.new("CompositorNodeMath")
 edge_clamp.operation = "MINIMUM"
 edge_clamp.inputs[1].default_value = 1.0
@@ -405,15 +408,15 @@ ctree.links.new(rlayers.outputs["Mist"], haze_scale.inputs[0])
 ctree.links.new(haze_scale.outputs["Value"], haze_mix.inputs[0])
 
 ctree.links.new(haze_mix.outputs["Image"], hue_sat.inputs["Image"])
-# 輪郭線は塗りつぶし前(Kuwahara/Posterizeで滲む前)のシャープな段階から検出する
-ctree.links.new(hue_sat.outputs["Image"], edge_sobel.inputs["Image"])
+ctree.links.new(hue_sat.outputs["Image"], kuwahara.inputs["Image"])
+ctree.links.new(kuwahara.outputs["Image"], posterize.inputs["Image"])
+
+ctree.links.new(posterize.outputs["Image"], edge_sobel.inputs["Image"])
 ctree.links.new(edge_sobel.outputs["Image"], edge_bw.inputs["Image"])
 ctree.links.new(edge_bw.outputs["Val"], edge_strength.inputs[0])
 ctree.links.new(edge_strength.outputs["Value"], edge_clamp.inputs[0])
 ctree.links.new(edge_clamp.outputs["Value"], edge_invert.inputs[1])
 
-ctree.links.new(hue_sat.outputs["Image"], kuwahara.inputs["Image"])
-ctree.links.new(kuwahara.outputs["Image"], posterize.inputs["Image"])
 ctree.links.new(posterize.outputs["Image"], line_mix.inputs[1])
 ctree.links.new(edge_invert.outputs["Value"], line_mix.inputs[2])
 ctree.links.new(line_mix.outputs["Image"], composite.inputs["Image"])
