@@ -371,8 +371,9 @@ hue_sat = ctree.nodes.new("CompositorNodeHueSat")
 hue_sat.inputs["Saturation"].default_value = 1.35
 
 kuwahara = ctree.nodes.new("CompositorNodeKuwahara")
-kuwahara.variant = "CLASSIC"
-kuwahara.size = 8
+print("[debug] Kuwahara props:", [p.identifier for p in kuwahara.bl_rna.properties if not p.is_readonly])
+if hasattr(kuwahara, "size"):
+    kuwahara.size = 8
 
 posterize = ctree.nodes.new("CompositorNodePosterize")
 posterize.inputs["Steps"].default_value = 7
