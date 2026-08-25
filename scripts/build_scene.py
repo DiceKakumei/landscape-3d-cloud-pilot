@@ -370,6 +370,12 @@ haze_scale.inputs[1].default_value = 0.3
 hue_sat = ctree.nodes.new("CompositorNodeHueSat")
 hue_sat.inputs["Saturation"].default_value = 1.15  # 1.35だと茶色が赤に転んだため弱めた
 
+# 木の葉が密集した内部は、実際の自己遮蔽(AO)で物理的に暗く、露出/環境光の
+# 底上げだけでは直らない(ライト側でいくら明るくしても遮られた場所は暗いまま)。
+# ガンマ<1のカーブでシャドウだけを持ち上げ、posterizeで黒一色に潰れるのを防ぐ。
+shadow_lift = ctree.nodes.new("CompositorNodeGamma")
+shadow_lift.inputs["Gamma"].default_value = 0.55
+
 kuwahara = ctree.nodes.new("CompositorNodeKuwahara")
 kuwahara.variation = "CLASSIC"
 kuwahara.uniformity = 8
@@ -395,7 +401,8 @@ ctree.links.new(rlayers.outputs["Mist"], haze_scale.inputs[0])
 ctree.links.new(haze_scale.outputs["Value"], haze_mix.inputs[0])
 
 ctree.links.new(haze_mix.outputs["Image"], hue_sat.inputs["Image"])
-ctree.links.new(hue_sat.outputs["Image"], kuwahara.inputs["Image"])
+ctree.links.new(hue_sat.outputs["Image"], shadow_lift.inputs["Image"])
+ctree.links.new(shadow_lift.outputs["Image"], kuwahara.inputs["Image"])
 ctree.links.new(kuwahara.outputs["Image"], posterize.inputs["Image"])
 ctree.links.new(posterize.outputs["Image"], composite.inputs["Image"])
 
