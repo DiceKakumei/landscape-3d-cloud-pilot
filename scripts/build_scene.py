@@ -187,6 +187,21 @@ bpy.ops.mesh.primitive_plane_add(size=400, location=(0, 0, 0))
 ground = bpy.context.active_object
 ground.name = "Ground"
 
+# 法線バンプだけでは近距離(ベンチ周辺)がのっぺりして見えるため、
+# 実ジオメトリの緩やかな起伏をDisplaceモディファイアで加える
+bpy.context.view_layer.objects.active = ground
+bpy.ops.object.mode_set(mode="EDIT")
+bpy.ops.mesh.subdivide(number_cuts=150)
+bpy.ops.object.mode_set(mode="OBJECT")
+
+terrain_tex = bpy.data.textures.new("TerrainNoise", type="CLOUDS")
+terrain_tex.noise_scale = 6.0
+terrain_tex.noise_depth = 2
+disp_mod = ground.modifiers.new("Terrain", type="DISPLACE")
+disp_mod.texture = terrain_tex
+disp_mod.strength = 0.06
+disp_mod.mid_level = 0.5
+
 grass_mat = bpy.data.materials.new("Grass")
 grass_mat.use_nodes = True
 nt = grass_mat.node_tree
@@ -348,6 +363,38 @@ haze_scale = ctree.nodes.new("CompositorNodeMath")
 haze_scale.operation = "MULTIPLY"
 haze_scale.inputs[1].default_value = 0.3
 
+# イラスト調スタイライズ: 彩度を上げてから、
+# 1) Kuwaharaフィルタで絵の具の面のような塗り分けにする(細部のノイズを消す)
+# 2) Posterizeで色数を落として平坦な塗りにする
+# 3) Sobelエッジ検出で輪郭線を作り、線画として乗算で重ねる
+hue_sat = ctree.nodes.new("CompositorNodeHueSat")
+hue_sat.inputs["Saturation"].default_value = 1.35
+
+kuwahara = ctree.nodes.new("CompositorNodeKuwahara")
+kuwahara.variant = "CLASSIC"
+kuwahara.size = 8
+
+posterize = ctree.nodes.new("CompositorNodePosterize")
+posterize.inputs["Steps"].default_value = 7
+
+edge_sobel = ctree.nodes.new("CompositorNodeFilter")
+edge_sobel.filter_type = "SOBEL"
+edge_bw = ctree.nodes.new("CompositorNodeRGBToBW")
+edge_strength = ctree.nodes.new("CompositorNodeMath")
+edge_strength.operation = "MULTIPLY"
+edge_strength.inputs[1].default_value = 3.0
+edge_clamp = ctree.nodes.new("CompositorNodeMath")
+edge_clamp.operation = "MINIMUM"
+edge_clamp.inputs[1].default_value = 1.0
+edge_invert = ctree.nodes.new("CompositorNodeMath")
+edge_invert.operation = "SUBTRACT"
+edge_invert.use_clamp = True
+edge_invert.inputs[0].default_value = 1.0
+
+line_mix = ctree.nodes.new("CompositorNodeMixRGB")
+line_mix.blend_type = "MULTIPLY"
+line_mix.inputs[0].default_value = 1.0
+
 composite = ctree.nodes.new("CompositorNodeComposite")
 
 ctree.links.new(rlayers.outputs["Image"], color_balance.inputs["Image"])
@@ -355,7 +402,20 @@ ctree.links.new(color_balance.outputs["Image"], glare.inputs["Image"])
 ctree.links.new(glare.outputs["Image"], haze_mix.inputs[1])
 ctree.links.new(rlayers.outputs["Mist"], haze_scale.inputs[0])
 ctree.links.new(haze_scale.outputs["Value"], haze_mix.inputs[0])
-ctree.links.new(haze_mix.outputs["Image"], composite.inputs["Image"])
+
+ctree.links.new(haze_mix.outputs["Image"], hue_sat.inputs["Image"])
+# 輪郭線は塗りつぶし前(Kuwahara/Posterizeで滲む前)のシャープな段階から検出する
+ctree.links.new(hue_sat.outputs["Image"], edge_sobel.inputs["Image"])
+ctree.links.new(edge_sobel.outputs["Image"], edge_bw.inputs["Image"])
+ctree.links.new(edge_bw.outputs["Val"], edge_strength.inputs[0])
+ctree.links.new(edge_strength.outputs["Value"], edge_clamp.inputs[0])
+ctree.links.new(edge_clamp.outputs["Value"], edge_invert.inputs[1])
+
+ctree.links.new(hue_sat.outputs["Image"], kuwahara.inputs["Image"])
+ctree.links.new(kuwahara.outputs["Image"], posterize.inputs["Image"])
+ctree.links.new(posterize.outputs["Image"], line_mix.inputs[1])
+ctree.links.new(edge_invert.outputs["Value"], line_mix.inputs[2])
+ctree.links.new(line_mix.outputs["Image"], composite.inputs["Image"])
 
 # ---------------------------------------------------------------
 # 7. 出力
