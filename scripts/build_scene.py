@@ -369,13 +369,14 @@ haze_scale.inputs[1].default_value = 0.3
 # 2) Posterizeで色数を落として平坦な塗りにする
 hue_sat = ctree.nodes.new("CompositorNodeHueSat")
 hue_sat.inputs["Saturation"].default_value = 1.15  # 1.35だと茶色が赤に転んだため弱めた
+hue_sat.inputs["Value"].default_value = 1.15  # 影になった葉がposterizeで黒に潰れないよう底上げ
 
 kuwahara = ctree.nodes.new("CompositorNodeKuwahara")
 kuwahara.variation = "CLASSIC"
-kuwahara.uniformity = 12
+kuwahara.uniformity = 5  # 12だと木の樹冠全体が1つの暗い塗りに潰れてしまった
 
 posterize = ctree.nodes.new("CompositorNodePosterize")
-posterize.inputs["Steps"].default_value = 7
+posterize.inputs["Steps"].default_value = 10  # 7だと暗い緑の階調が足りず黒に丸められた
 
 # 輪郭線(黒い縁取り線)は今回見送る。試した2方式とも実用に耐えなかった:
 #   - 色ベースのSobel: 木の葉のような細部の多いテクスチャで内部が
