@@ -3,11 +3,8 @@ name: Render landscape pilot
 on:
   workflow_dispatch:
     inputs:
-      bench_glb_url:
-        description: "bench.glb の署名付きダウンロードURL"
-        required: true
       tree_glb_url:
-        description: "tree.glb の署名付きダウンロードURL"
+        description: "tree.glb の署名付きダウンロードURL(ベンチはbpyプリミティブで生成するため不要)"
         required: true
 
 jobs:
@@ -27,7 +24,6 @@ jobs:
       - name: Download assets
         run: |
           mkdir -p assets output
-          curl -L -o assets/bench.glb "${{ inputs.bench_glb_url }}"
           curl -L -o assets/tree.glb "${{ inputs.tree_glb_url }}"
           ls -la assets
 

@@ -28,60 +28,73 @@ scene = bpy.context.scene
 scene.unit_settings.system = "METRIC"
 
 
-def strip_thin_base_slab(obj, thickness_ratio=0.06, footprint_ratio=0.5, max_pieces=20):
-    """objの中に、全高に比べて極端に薄く水平方向には広い"台座/影受け板"らしき
-    ルーズパーツがあれば削除する(Meshyのimage-to-3dが単体撮影時の接地シャドウを
-    そのまま平板ジオメトリとして焼き込むことがあるため)。
-    パーツ数が多すぎる場合(有機物の枝葉など個々が小さいパーツに分かれている場合)
-    は誤検出のリスクが高いため何もせず1つに結合し直すだけにする。"""
+def build_bench(length=1.6, depth=0.5, seat_height=0.4, total_height=0.9, name="Bench"):
+    """Meshyのimage-to-3dは脚の間の空間を閉じたメッシュにするため厚い板で
+    埋めてしまう(bench2.glbで実測確認済み: 底面から高さ30%までのX-Z footprint
+    がほぼ全体footprintと一致=脚の間が中空でなく塗りつぶされている)。
+    ベンチのような単純な直方体の組み合わせで表現できる人工物は、
+    最初のscene_analysis.mdの方針通りbpyプリミティブで直接組み立てる。"""
+    leg_thickness = 0.08
+    plank_thickness = 0.045
+    inset = 0.12
+    leg_x = length / 2 - inset
+    leg_y = depth / 2 - leg_thickness / 2 - 0.02
+
+    parts = []
+
+    def add_box(dims, location):
+        bpy.ops.mesh.primitive_cube_add(size=1, location=location)
+        b = bpy.context.active_object
+        b.scale = dims
+        bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
+        parts.append(b)
+        return b
+
+    for sx in (-1, 1):
+        add_box((leg_thickness, leg_thickness, seat_height), (sx * leg_x, leg_y, seat_height / 2))
+        add_box((leg_thickness, leg_thickness, total_height), (sx * leg_x, -leg_y, total_height / 2))
+
+    seat_board_depth = (depth - 0.04) / 2
+    seat_board_length = length - 2 * inset * 0.3
+    for sy in (-1, 1):
+        add_box(
+            (seat_board_length, seat_board_depth, plank_thickness),
+            (0, sy * (seat_board_depth / 2 + 0.02), seat_height - plank_thickness / 2),
+        )
+
+    back_y = -leg_y
+    back_bottom = seat_height + 0.08
+    slat_gap = 0.03
+    slat_h = (total_height - back_bottom - 2 * slat_gap) / 3
+    for i in range(3):
+        z = back_bottom + i * (slat_h + slat_gap) + slat_h / 2
+        add_box((seat_board_length, plank_thickness, slat_h), (0, back_y, z))
+
     bpy.ops.object.select_all(action="DESELECT")
-    obj.select_set(True)
-    bpy.context.view_layer.objects.active = obj
-    bpy.ops.object.mode_set(mode="EDIT")
-    bpy.ops.mesh.select_all(action="SELECT")
-    bpy.ops.mesh.separate(type="LOOSE")
-    bpy.ops.object.mode_set(mode="OBJECT")
-    pieces = [o for o in bpy.context.selected_objects if o.type == "MESH"]
+    for p in parts:
+        p.select_set(True)
+    bpy.context.view_layer.objects.active = parts[0]
+    bpy.ops.object.join()
+    obj = bpy.context.view_layer.objects.active
+    obj.name = name
 
-    def rejoin(objs):
-        bpy.ops.object.select_all(action="DESELECT")
-        for p in objs:
-            p.select_set(True)
-        bpy.context.view_layer.objects.active = objs[0]
-        if len(objs) > 1:
-            bpy.ops.object.join()
-        return bpy.context.view_layer.objects.active
+    # joinされたオブジェクトの原点を接地中心(0,0,0)に揃え直す
+    bpy.context.scene.cursor.location = (0.0, 0.0, 0.0)
+    bpy.ops.object.origin_set(type="ORIGIN_CURSOR")
 
-    if len(pieces) <= 1 or len(pieces) > max_pieces:
-        return rejoin(pieces)
+    mat = bpy.data.materials.new(f"{name}_wood")
+    mat.use_nodes = True
+    bsdf = mat.node_tree.nodes.get("Principled BSDF")
+    bsdf.inputs["Base Color"].default_value = (0.30, 0.20, 0.12, 1.0)
+    bsdf.inputs["Roughness"].default_value = 0.7
+    obj.data.materials.append(mat)
 
-    stats = []
-    for p in pieces:
-        xs = [v.co.x for v in p.data.vertices]
-        ys = [v.co.y for v in p.data.vertices]
-        zs = [v.co.z for v in p.data.vertices]
-        stats.append((p, max(xs) - min(xs), max(ys) - min(ys), max(zs) - min(zs)))
-
-    total_z = max(s[3] for s in stats)
-    total_footprint = max(max(s[1], s[2]) for s in stats)
-
-    keep = []
-    for p, dx, dy, dz in stats:
-        thin = total_z > 0 and (dz / total_z) < thickness_ratio
-        wide = total_footprint > 0 and (max(dx, dy) / total_footprint) > footprint_ratio
-        if thin and wide:
-            print(f"[cleanup] {obj.name}: removing thin base slab piece (dz={dz:.4f}, footprint={max(dx, dy):.4f})")
-            bpy.data.objects.remove(p, do_unlink=True)
-        else:
-            keep.append(p)
-
-    if not keep:
-        keep = pieces  # 誤検出で全部消えるのを防ぐ安全策(通常は起きない)
-
-    return rejoin(keep)
+    verts = [obj.matrix_world @ v.co for v in obj.data.vertices]
+    print(f"[check] {name}: min_z={min(v.z for v in verts):.4f} max_z={max(v.z for v in verts):.4f}")
+    return obj
 
 
-def import_glb_scaled(filepath, target_height_m, name, strip_thin_base=False):
+def import_glb_scaled(filepath, target_height_m, name):
     """glbをインポートし、バウンディングボックス高さがtarget_height_mになるよう
     一様スケールし、原点を底面中心に揃えて1つのオブジェクトにjoinして返す"""
     before = set(bpy.data.objects)
@@ -108,10 +121,6 @@ def import_glb_scaled(filepath, target_height_m, name, strip_thin_base=False):
         bpy.ops.object.join()
     obj = bpy.context.view_layer.objects.active
     obj.name = name
-
-    if strip_thin_base:
-        obj = strip_thin_base_slab(obj)
-        obj.name = name
 
     bpy.ops.object.select_all(action="DESELECT")
     obj.select_set(True)
@@ -156,7 +165,7 @@ def import_glb_scaled(filepath, target_height_m, name, strip_thin_base=False):
 # 1. 被写体の配置(scene_analysis.mdの見積もりに基づく)
 # ---------------------------------------------------------------
 # ベンチ: 前景・カメラから約5m・全長1.6m
-bench = import_glb_scaled(os.path.join(ASSET_DIR, "bench.glb"), target_height_m=0.9, name="Bench", strip_thin_base=True)
+bench = build_bench(length=1.6, depth=0.5, seat_height=0.4, total_height=0.9, name="Bench")
 bench.location = (-2.2, 5.0, 0.0)
 bench.rotation_euler = (0, 0, math.radians(20))
 
