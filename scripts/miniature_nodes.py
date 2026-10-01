@@ -20,6 +20,7 @@ DEFAULTS = {
     "Glow": 0.15,           # 明るい部分のにじみ（模型の電飾っぽさ, 0=なし）
     "Vignette": 0.05,       # 四隅の暗さ（0=なし）
 }
+BLUR_LEVELS = 4  # ぼかしの段数（多いほど滑らかだが重い）
 
 
 def build(name="Miniature", defaults=DEFAULTS):
@@ -122,18 +123,30 @@ def build(name="Miniature", defaults=DEFAULTS):
     L.new(diff.outputs[2], sh.inputs[7])
 
     # --- ぼかし：Defocus（Z入力=ぼけ半径マップ）で連続的に ---
-    radius = math("MULTIPLY", 150, -400, t, I["Blur Size"])
-    df = node("CompositorNodeDefocus", 250, 100, use_zbuffer=False, z_scale=1.0, blur_max=200, f_stop=128)
-    df.bokeh = "CIRCLE"
-    L.new(sh.outputs[2], df.inputs["Image"])
-    L.new(radius, df.inputs["Z"])
+    # 半径をピクセルごとに変えるとCPUコンポジターでは色の段差（ポスタリゼーション）が出るため、
+    # 一定半径のDefocusを BLUR_LEVELS 段作り、マスク t に応じて隣り合う段を線形に混ぜる
+    s = math("MULTIPLY", 150, -400, t, BLUR_LEVELS)
+    result = sh.outputs[2]
+    for i in range(1, BLUR_LEVELS + 1):
+        rad = math("MULTIPLY", 150, -550 - 60 * i, I["Blur Size"], i / BLUR_LEVELS)
+        df = node("CompositorNodeDefocus", 250, 300 - 180 * i, use_zbuffer=False, z_scale=1.0,
+                  blur_max=200, f_stop=128)
+        df.bokeh = "CIRCLE"
+        L.new(sh.outputs[2], df.inputs["Image"])
+        L.new(rad, df.inputs["Z"])
+        w = math("SUBTRACT", 330, -550 - 60 * i, s, i - 1, clamp=True)
+        mx = node("ShaderNodeMix", 450 + 40 * i, 300 - 180 * i, data_type="RGBA")
+        L.new(w, mx.inputs[0])
+        L.new(result, mx.inputs[6])
+        L.new(df.outputs[0], mx.inputs[7])
+        result = mx.outputs[2]
 
     # --- にじみ：明るい部分をBloomで光らせる（模型の電飾っぽさ） ---
-    gl = node("CompositorNodeGlare", 480, 100)
+    gl = node("CompositorNodeGlare", 750, 100)
     gl.inputs["Type"].default_value = "Bloom"
     gl.inputs["Threshold"].default_value = 0.75
     gl.inputs["Size"].default_value = 0.6
-    L.new(df.outputs[0], gl.inputs["Image"])
+    L.new(result, gl.inputs["Image"])
     L.new(I["Glow"], gl.inputs["Strength"])
 
     # --- ビネット：中心からの距離で四隅を黒に寄せる ---
@@ -179,6 +192,9 @@ def setup_scene(image_path, out_path, group_name="Miniature"):
         sc.collection.objects.link(cam)
         sc.camera = cam
     sc.render.use_compositing = True
+    # 写真の色をそのまま扱う（Blender 5.0 既定の AgX だと暗く濁る）
+    sc.view_settings.view_transform = "Standard"
+    sc.view_settings.look = "None"
     sc.render.image_settings.file_format = "PNG"
     sc.render.filepath = out_path
     return ng
