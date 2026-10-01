@@ -1,0 +1,56 @@
+name: Miniature node screenshot
+
+# 使い方:
+# gh workflow run nodeshot.yml -f image="https://..." -f tag=nodeshot-v1
+# 仮想ディスプレイ(Xvfb)上でBlenderをGUI起動し、Miniatureノードグループとコンポジター全体のスクショをReleaseに添付する
+
+on:
+  workflow_dispatch:
+    inputs:
+      image:
+        description: 'コンポジターに読み込む画像のURL（見た目確認用）'
+        required: true
+      tag:
+        description: '結果を添付するReleaseのタグ名'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  nodeshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Xvfb and Mesa
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb libgl1 libglu1-mesa libegl1 libxi6 libxkbcommon0 libxxf86vm1 libxfixes3 libxrender1 libsm6 mesa-utils
+
+      - name: Download Blender
+        run: |
+          curl -L -o blender.tar.xz "https://download.blender.org/release/Blender5.0/blender-5.0.1-linux-x64.tar.xz"
+          tar -xf blender.tar.xz
+          mv blender-5.0.1-linux-x64 blender
+          echo "$(pwd)/blender" >> "$GITHUB_PATH"
+
+      - name: Fetch input image
+        env:
+          IMAGE: ${{ inputs.image }}
+        run: |
+          mkdir -p input output
+          curl -L -A "Mozilla/5.0 miniature-cloud" -o input/source.jpg "$IMAGE"
+
+      - name: Screenshot node editor
+        run: |
+          timeout 600 xvfb-run -a -s "-screen 0 2560x1440x24" blender -p 0 0 2560 1440 --factory-startup --python scripts/screenshot_nodes.py -- input/source.jpg output || true
+          ls -la output
+
+      - name: Upload to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          gh release create "$TAG" output/nodes_*.png --title "$TAG" --notes "node editor screenshots"
