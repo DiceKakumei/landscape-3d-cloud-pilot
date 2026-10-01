@@ -27,7 +27,7 @@ jobs:
       - name: Install Xvfb and Mesa
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq xvfb libgl1 libglu1-mesa libegl1 libxi6 libxkbcommon0 libxxf86vm1 libxfixes3 libxrender1 libsm6 mesa-utils
+          sudo apt-get install -y -qq xvfb libgl1 libglu1-mesa libegl1 libxi6 libxkbcommon0 libxxf86vm1 libxfixes3 libxrender1 libsm6 mesa-utils imagemagick
 
       - name: Download Blender
         run: |
@@ -45,7 +45,25 @@ jobs:
 
       - name: Screenshot node editor
         run: |
-          timeout 600 xvfb-run -a -s "-screen 0 2560x1440x24" blender -p 0 0 2560 1440 --factory-startup --python scripts/screenshot_nodes.py -- input/source.jpg output || true
+          Xvfb :99 -screen 0 2560x1440x24 &
+          export DISPLAY=:99
+          sleep 2
+          glxinfo -B | head -20 || true
+          blender -p 0 0 2560 1440 --factory-startup --python scripts/screenshot_nodes.py -- input/source.jpg output &
+          BPID=$!
+          # Blender側が <name>.ready を置いたら画面全体を撮り、<name>.done を返す
+          for i in $(seq 1 600); do
+            for r in output/*.ready; do
+              [ -e "$r" ] || continue
+              f="${r%.ready}"
+              sleep 1
+              import -display :99 -window root "$f"
+              rm "$r"; touch "$f.done"; echo "captured $f"
+            done
+            kill -0 $BPID 2>/dev/null || break
+            sleep 0.5
+          done
+          kill $BPID 2>/dev/null || true
           ls -la output
 
       - name: Upload to release

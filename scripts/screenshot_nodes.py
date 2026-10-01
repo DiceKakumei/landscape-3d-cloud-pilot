@@ -23,13 +23,18 @@ def node_area():
 
 
 def shot(win, area, path):
+    # Blender内蔵のscreenshotはXvfbでは真っ黒になるため、外部(ImageMagick import)に撮らせる。
+    # <path>.ready を置き、シェル側が撮影して <path>.done を置くまで待つ
     region = next(r for r in area.regions if r.type == "WINDOW")
     with bpy.context.temp_override(window=win, area=area, region=region):
         bpy.ops.node.view_all()
-    bpy.ops.wm.redraw_timer(type="DRAW_WIN_SWAP", iterations=1)
-    with bpy.context.temp_override(window=win, area=area, region=region):
-        bpy.ops.screen.screenshot_area(filepath=path)
-    print("saved", path)
+    bpy.ops.wm.redraw_timer(type="DRAW_WIN_SWAP", iterations=3)
+    open(path + ".ready", "w").close()
+    print("ready", path)
+
+
+def wait_done(path):
+    return os.path.exists(path + ".done")
 
 
 state = {"step": 0}
@@ -46,11 +51,19 @@ def tick():
     elif step == 1:
         shot(win, node_area()[1], os.path.join(OUT, "nodes_compositor.png"))
     elif step == 2:
+        if not wait_done(os.path.join(OUT, "nodes_compositor.png")):
+            bpy.ops.wm.redraw_timer(type="DRAW_WIN_SWAP", iterations=1)
+            return 0.5
+    elif step == 3:
         # グループの中に入る
         space = node_area()[1].spaces.active
         space.path.append(g)
-    elif step == 3:
+    elif step == 4:
         shot(win, node_area()[1], os.path.join(OUT, "nodes_miniature_group.png"))
+    elif step == 5:
+        if not wait_done(os.path.join(OUT, "nodes_miniature_group.png")):
+            bpy.ops.wm.redraw_timer(type="DRAW_WIN_SWAP", iterations=1)
+            return 0.5
     else:
         bpy.ops.wm.quit_blender()
         return None
