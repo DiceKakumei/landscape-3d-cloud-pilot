@@ -22,7 +22,12 @@ if unknown:
     raise SystemExit(f"未知のパラメータ: {sorted(unknown)} / 使えるもの: {sorted(params)}")
 params.update(overrides)
 
-mn.build(defaults=params)
+g = mn.build(defaults=params)
+# 切り分け用："_mute": ["CompositorNodeKuwahara", ...] で該当ノードをミュート（入力をそのまま通す）
+for n in g.nodes:
+    if n.bl_idname in scene_opts.get("_mute", []):
+        n.mute = True
+        print("muted", n.name)
 ng = mn.setup_scene(image_path, out_path)
 sc = bpy.context.scene
 
