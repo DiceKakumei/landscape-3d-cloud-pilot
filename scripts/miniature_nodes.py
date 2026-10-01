@@ -123,17 +123,18 @@ def build(name="Miniature", defaults=DEFAULTS):
     L.new(diff.outputs[2], sh.inputs[7])
 
     # --- ぼかし：Defocus（Z入力=ぼけ半径マップ）で連続的に ---
-    # 半径をピクセルごとに変えるとCPUコンポジターでは色の段差（ポスタリゼーション）が出るため、
-    # 一定半径のDefocusを BLUR_LEVELS 段作り、マスク t に応じて隣り合う段を線形に混ぜる
+    # CPUコンポジターのDefocusは色の段差（ポスタリゼーション）が出るため使わない。
+    # 一定半径のガウスぼかしを BLUR_LEVELS 段作り、マスク t に応じて隣り合う段を線形に混ぜる
     s = math("MULTIPLY", 150, -400, t, BLUR_LEVELS)
     result = sh.outputs[2]
     for i in range(1, BLUR_LEVELS + 1):
         rad = math("MULTIPLY", 150, -550 - 60 * i, I["Blur Size"], i / BLUR_LEVELS)
-        df = node("CompositorNodeDefocus", 250, 300 - 180 * i, use_zbuffer=False, z_scale=1.0,
-                  blur_max=200, f_stop=128)
-        df.bokeh = "CIRCLE"
+        vec = node("ShaderNodeCombineXYZ", 200, -550 - 60 * i)
+        L.new(rad, vec.inputs[0])
+        L.new(rad, vec.inputs[1])
+        df = node("CompositorNodeBlur", 250, 300 - 180 * i)
         L.new(sh.outputs[2], df.inputs["Image"])
-        L.new(rad, df.inputs["Z"])
+        L.new(vec.outputs[0], df.inputs["Size"])
         w = math("SUBTRACT", 330, -550 - 60 * i, s, i - 1, clamp=True)
         mx = node("ShaderNodeMix", 450 + 40 * i, 300 - 180 * i, data_type="RGBA")
         L.new(w, mx.inputs[0])
