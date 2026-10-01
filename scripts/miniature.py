@@ -14,6 +14,8 @@ argv = sys.argv[sys.argv.index("--") + 1:]
 image_path, out_path = os.path.abspath(argv[0]), os.path.abspath(argv[1])
 overrides = json.loads(argv[2]) if len(argv) > 2 and argv[2].strip() else {}
 
+# "_" で始まるキーはノード以外のシーン設定（例: "_view_transform": "Standard"）
+scene_opts = {k: overrides.pop(k) for k in list(overrides) if k.startswith("_")}
 params = dict(mn.DEFAULTS)
 unknown = set(overrides) - set(params)
 if unknown:
@@ -33,6 +35,12 @@ except (TypeError, AttributeError) as e:
     print("engine fallback:", e)
 if hasattr(sc.render, "compositor_device"):
     sc.render.compositor_device = "CPU"
+if "_view_transform" in scene_opts:
+    sc.view_settings.view_transform = scene_opts["_view_transform"]
+    sc.view_settings.look = "None"
+img = next(i for i in bpy.data.images if i.filepath)
+print("color:", sc.display_settings.display_device, sc.view_settings.view_transform,
+      sc.view_settings.look, "image:", img.colorspace_settings.name, img.is_float, img.depth)
 
 bpy.ops.render.render(write_still=True)
 print("wrote", out_path)
