@@ -21,11 +21,14 @@ cloud_render/
 ├── .github/workflows/    # ジョブ1つにつきworkflow 1ファイル(workflow_dispatch)
 │   ├── render.yml        # 風景3DCG再現専用
 │   ├── retopo.yml        # 自動リトポ(QuadriFlow Remesh)
-│   └── animate.yml       # リグ済みベース+Mixamoアニメーションの合成
+│   ├── animate.yml       # リグ済みベース+Mixamoアニメーションの合成
+│   └── miniature.yml     # 画像にミニチュア(ティルトシフト)フィルター。Blender 5.0.1、結果はReleaseに添付
 └── scripts/               # workflowから呼ばれるBlender Pythonエントリスクリプト
     ├── build_scene.py
     ├── retopo_quadriflow.py
-    └── rig_animate.py
+    ├── rig_animate.py
+    ├── miniature.py       # miniature.yml のエントリ
+    └── miniature_nodes.py # ノード定義(原本: 1_アプリ開発/ミニチュアフィルター/build_miniature.py をコピー)
 ```
 
 新しいジョブを追加する場合:
