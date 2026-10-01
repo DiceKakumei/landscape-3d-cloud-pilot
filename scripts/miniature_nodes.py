@@ -10,13 +10,15 @@ DEFAULTS = {
     "Falloff Top": 0.645,   # 帯の上端から最大ぼけに達するまでの距離（画面高さ比）
     "Falloff Bottom": 0.205,# 帯の下端から最大ぼけに達するまでの距離（画面高さ比）
     "Blur Size": 22.0,      # 最大ぼけ半径(px)
+    "Center Blur": 0.15,    # 被写体部分にも残すぼけの割合（0=くっきり。境目を消すため少し残す）
     "Blur Curve": 1.5,      # ぼけの立ち上がり（1=距離に比例, 大きいほど帯付近がなだらか）
     "Plastic": 2.0,         # 細かい質感をならしてプラ模型っぽくする（Kuwahara半径px, 0=なし）
     "Sharpen": 0.6,         # ピント帯の中だけシャープにする量（0=なし）
     "Saturation": 1.45,
     "Contrast": 6.0,
     "Gamma": 1.0,           # 1未満で中間調を明るく
-    "Exposure": 0.3,        # 全体の明るさ(EV)
+    "Exposure": 0.2,        # 全体の明るさ(EV)
+    "Warmth": 0.5,          # 暖色寄せ（0=なし, 1=強）。彩度を上げたときの青かぶり対策
     "Glow": 0.15,           # 明るい部分のにじみ（模型の電飾っぽさ, 0=なし）
     "Vignette": 0.05,       # 四隅の暗さ（0=なし）
 }
@@ -36,7 +38,8 @@ def build(name="Miniature", defaults=DEFAULTS):
               "Falloff Top": (0.01, 1), "Falloff Bottom": (0.01, 1),
               "Blur Size": (0, 200), "Blur Curve": (0.2, 4), "Saturation": (0, 2),
               "Contrast": (-100, 100), "Gamma": (0.2, 3), "Vignette": (0, 1),
-              "Plastic": (0, 30), "Exposure": (-3, 3), "Glow": (0, 2), "Sharpen": (0, 1)}
+              "Plastic": (0, 30), "Exposure": (-3, 3), "Glow": (0, 2), "Sharpen": (0, 1),
+              "Center Blur": (0, 1), "Warmth": (-1, 2)}
     for k, v in defaults.items():
         s = it.new_socket(k, in_out="INPUT", socket_type="NodeSocketFloat")
         s.default_value = v
@@ -86,6 +89,11 @@ def build(name="Miniature", defaults=DEFAULTS):
     den = math("MAXIMUM", -420, -600, fsel.outputs[0], 0.001)
     t = math("DIVIDE", -240, -400, num, den, clamp=True)
     t = math("POWER", -60, -400, t, I["Blur Curve"])
+    # 全体を最低 Center Blur の割合でぼかす（くっきりした帯を作らず、境目を消す）
+    # t = Center Blur + (1 - Center Blur) * t
+    keep = math("SUBTRACT", -60, -550, 1.0, I["Center Blur"])
+    t = math("MULTIPLY_ADD", 60, -400, t, keep)
+    L.new(I["Center Blur"], t.node.inputs[2])
 
     # --- 質感：Kuwaharaで細かいテクスチャをならし、塗装したプラ模型のような面にする ---
     kw = node("CompositorNodeKuwahara", -1350, 200)
@@ -106,20 +114,32 @@ def build(name="Miniature", defaults=DEFAULTS):
     ex = node("CompositorNodeExposure", -550, 200)
     L.new(gm.outputs[0], ex.inputs["Image"])
     L.new(I["Exposure"], ex.inputs["Exposure"])
+    # 暖色寄せ：R・Gを少し上げ、Bを下げる（彩度を上げたときの影の青かぶり対策）
+    wc = node("CompositorNodeCombineColor", -550, 400)
+    L.new(math("MULTIPLY_ADD", -700, 450, I["Warmth"], 0.10), wc.inputs["Red"])
+    L.new(math("MULTIPLY_ADD", -700, 400, I["Warmth"], 0.03), wc.inputs["Green"])
+    L.new(math("MULTIPLY_ADD", -700, 350, I["Warmth"], -0.12), wc.inputs["Blue"])
+    for sock in ("Red", "Green", "Blue"):
+        wc.inputs[sock].links[0].from_node.inputs[2].default_value = 1.0
+    wm = node("ShaderNodeMix", -400, 300, data_type="RGBA", blend_type="MULTIPLY")
+    wm.inputs[0].default_value = 1.0
+    L.new(ex.outputs[0], wm.inputs[6])
+    L.new(wc.outputs[0], wm.inputs[7])
+    graded = wm.outputs[2]  # 以降は暖色寄せ後の画像を使う
 
     # --- シャープ：ピント帯の中（マスクが黒い所）だけアンシャープマスクで輪郭を立てる ---
     # （FilterノードのSharpenはKuwaharaの平坦部を強調して縞が出るため使わない）
     ub = node("CompositorNodeBlur", -350, 400)
     ub.inputs["Size"].default_value = (2, 2)
-    L.new(ex.outputs[0], ub.inputs["Image"])
+    L.new(graded, ub.inputs["Image"])
     diff = node("ShaderNodeMix", -150, 400, data_type="RGBA", blend_type="SUBTRACT", clamp_result=False)
     diff.inputs[0].default_value = 1.0
-    L.new(ex.outputs[0], diff.inputs[6])
+    L.new(graded, diff.inputs[6])
     L.new(ub.outputs[0], diff.inputs[7])
     sh = node("ShaderNodeMix", 50, 250, data_type="RGBA", blend_type="ADD", clamp_result=False)
     in_focus = math("SUBTRACT", -550, -150, 1.0, t)
     L.new(math("MULTIPLY", -400, -150, in_focus, I["Sharpen"]), sh.inputs[0])
-    L.new(ex.outputs[0], sh.inputs[6])
+    L.new(graded, sh.inputs[6])
     L.new(diff.outputs[2], sh.inputs[7])
 
     # --- ぼかし：Defocus（Z入力=ぼけ半径マップ）で連続的に ---
