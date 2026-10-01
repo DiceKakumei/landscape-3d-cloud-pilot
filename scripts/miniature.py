@@ -40,6 +40,10 @@ except (TypeError, AttributeError) as e:
     print("engine fallback:", e)
 if hasattr(sc.render, "compositor_device"):
     sc.render.compositor_device = "CPU"
+# 既定(AUTO)だとCPUでは半精度になり、ぼかした部分に色の段差が出るためFULLに固定
+if hasattr(sc.render, "compositor_precision"):
+    sc.render.compositor_precision = scene_opts.get("_precision", "FULL")
+    print("precision:", sc.render.compositor_precision)
 if "_view_transform" in scene_opts:
     sc.view_settings.view_transform = scene_opts["_view_transform"]
     sc.view_settings.look = "None"
