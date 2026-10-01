@@ -22,6 +22,7 @@ if unknown:
     raise SystemExit(f"未知のパラメータ: {sorted(unknown)} / 使えるもの: {sorted(params)}")
 params.update(overrides)
 
+mn.BLUR_LEVELS = int(scene_opts.get("_levels", mn.BLUR_LEVELS))  # ぼかしの段数（多いほど境界が滑らか）
 g = mn.build(defaults=params)
 # 切り分け用："_mute": ["CompositorNodeKuwahara", ...] で該当ノードをミュート（入力をそのまま通す）
 for n in g.nodes:
