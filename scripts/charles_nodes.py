@@ -20,6 +20,7 @@ DEFAULTS = {
     "Dark Point": 0.12,     # この明るさ以下を「暗色（赤茶）」にする
     "Light Point": 0.62,    # この明るさ以上を「紙色」にする
     "Color Keep": 0.35,     # 元写真の色をどれだけ残すか（0=完全にパレット色）
+    "Line Flatten": 0.0,    # 線を拾う前に面をならす強さ(px)。大きいほど細かいディテールの線が減る
     "Line Blur": 2.0,       # 線を拾う前のぼかし(px)。大きいと線が太く・少なくなる
     "Line Gain": 3.0,       # 線の拾いやすさ
     "Line Threshold": 0.25, # これ以下の弱いエッジは線にしない
@@ -37,6 +38,7 @@ DEFAULTS = {
     "Shadow Strength": 0.5,     # 接地の影の濃さ（マスク接続時のみ。0=なし）
     "Ground Y": 0.0,            # 被写体が地面に接する高さ（0=下端, 1=上端）
     "Shadow Height": 0.08,      # 影の厚み（被写体を縦につぶす倍率。小さいほど薄い）
+    "Shadow Wobble": 45.0,      # 影の揺らぎ(px)。大きいほどふにゃっとした形
     "Shadow Blur": 14.0,        # 影のぼかし(px)
     "Shadow Color": lin("#7a6340"),  # 影の色
 }
@@ -53,10 +55,10 @@ def build(name="Charles", defaults=DEFAULTS):
     s = it.new_socket("Image", in_out="INPUT", socket_type="NodeSocketColor")
     s.default_value = (0, 0, 0, 1)
     ranges = {"Exposure": (-3, 4), "Flatten": (0, 30), "Deep Point": (0, 1), "Dark Point": (0, 1), "Light Point": (0, 1),
-              "Color Keep": (0, 1), "Line Blur": (0, 10), "Line Gain": (0, 30),
+              "Color Keep": (0, 1), "Line Flatten": (0, 40), "Line Blur": (0, 10), "Line Gain": (0, 30),
               "Line Threshold": (0, 1), "Line Strength": (0, 1), "Grain": (0, 0.5),
               "Vignette": (0, 1), "BG Mottle": (0, 1), "BG Fiber": (0, 1),
-              "Shadow Strength": (0, 1), "Ground Y": (0, 1), "Shadow Height": (0.01, 1), "Shadow Blur": (0, 100)}
+              "Shadow Strength": (0, 1), "Ground Y": (0, 1), "Shadow Height": (0.01, 1), "Shadow Blur": (0, 100), "Shadow Wobble": (0, 300)}
     for k, v in defaults.items():
         if k in COLOR_KEYS:
             s = it.new_socket(k, in_out="INPUT", socket_type="NodeSocketColor")
@@ -153,7 +155,10 @@ def build(name="Charles", defaults=DEFAULTS):
     lsz = node("ShaderNodeCombineXYZ", -1700, -380)
     L.new(I["Line Blur"], lsz.inputs[0])
     L.new(I["Line Blur"], lsz.inputs[1])
-    L.new(I["Image"], lb.inputs["Image"])
+    lk = node("CompositorNodeKuwahara", -1650, -300)
+    L.new(I["Image"], lk.inputs["Image"])
+    L.new(I["Line Flatten"], lk.inputs["Size"])
+    L.new(lk.outputs[0], lb.inputs["Image"])
     L.new(lsz.outputs[0], lb.inputs["Size"])
     sb = node("CompositorNodeFilter", -1350, -300)
     # Blender 5.0 ではフィルター種別がノードのプロパティでなく入力ソケット（Menu）になった
@@ -218,11 +223,24 @@ def build(name="Charles", defaults=DEFAULTS):
     tr = node("CompositorNodeTranslate", 900, -1100)
     L.new(sq.outputs["Image"], tr.inputs["Image"])
     L.new(math("MULTIPLY", 800, -1200, math("SUBTRACT", 700, -1200, 1.0, I["Shadow Height"]), gd), tr.inputs["Y"])
-    shb = node("CompositorNodeBlur", 1100, -1100)
+    # 揺らぎ：ノイズでずらして陽炎のようにふにゃっとさせる
+    nw = node("ShaderNodeTexNoise", 900, -1350)
+    nw.inputs["Scale"].default_value = 7.0
+    nw.inputs["Detail"].default_value = 2.0
+    L.new(co.outputs["Normalized"], nw.inputs["Vector"])
+    wv = node("ShaderNodeVectorMath", 1050, -1350, operation="SUBTRACT")
+    L.new(nw.outputs["Color"], wv.inputs[0])
+    wv.inputs[1].default_value = (0.5, 0.5, 0.5)
+    dp = node("CompositorNodeDisplace", 1050, -1100)
+    L.new(tr.outputs["Image"], dp.inputs["Image"])
+    L.new(wv.outputs[0], dp.inputs["Vector"])
+    L.new(I["Shadow Wobble"], dp.inputs["X Scale"])
+    L.new(math("MULTIPLY", 1000, -1450, I["Shadow Wobble"], 0.4), dp.inputs["Y Scale"])
+    shb = node("CompositorNodeBlur", 1250, -1100)
     ssz = node("ShaderNodeCombineXYZ", 1000, -1200)
     L.new(I["Shadow Blur"], ssz.inputs[0])
     L.new(math("MULTIPLY", 950, -1250, I["Shadow Blur"], 0.5), ssz.inputs[1])
-    L.new(tr.outputs["Image"], shb.inputs["Image"])
+    L.new(dp.outputs["Image"], shb.inputs["Image"])
     L.new(ssz.outputs[0], shb.inputs["Size"])
     sh_f = math("MULTIPLY", 1300, -1100, shb.outputs[0], I["Shadow Strength"], clamp=True)
     bg = mix(1500, -450, sh_f, bg, I["Shadow Color"])
@@ -245,7 +263,7 @@ def build(name="Charles", defaults=DEFAULTS):
     return g
 
 
-def setup_scene(image_path, out_path, group_name="Charles", mask_path=None):
+def setup_scene(image_path, out_path, group_name="Charles", mask_path=None, shift=(0.0, 0.0)):
     sc = bpy.context.scene
     g = bpy.data.node_groups[group_name]
     tree = sc.compositing_node_group
@@ -259,14 +277,26 @@ def setup_scene(image_path, out_path, group_name="Charles", mask_path=None):
     ng = tree.nodes.new("CompositorNodeGroup"); ng.node_tree = g; ng.location = (-100, 0)
     o = tree.nodes.new("NodeGroupOutput"); o.location = (250, 0)
     v = tree.nodes.new("CompositorNodeViewer"); v.location = (250, -200)
-    tree.links.new(ni.outputs["Image"], ng.inputs["Image"])
+    src = ni.outputs["Image"]
+    if shift != (0.0, 0.0):  # 被写体を画面中央に寄せる（画像とマスクを同じだけ平行移動）
+        tn = tree.nodes.new("CompositorNodeTranslate"); tn.location = (-250, 100)
+        tn.inputs["X"].default_value, tn.inputs["Y"].default_value = shift
+        tree.links.new(src, tn.inputs["Image"])
+        src = tn.outputs["Image"]
+    tree.links.new(src, ng.inputs["Image"])
     if mask_path:  # 被写体マスク画像（白=被写体）を読み込んでグループの Mask に接続
         mimg = bpy.data.images.load(mask_path, check_existing=True)
         mimg.colorspace_settings.name = "Non-Color"
         nm = tree.nodes.new("CompositorNodeImage"); nm.image = mimg; nm.location = (-400, -250)
         bwn = tree.nodes.new("CompositorNodeRGBToBW"); bwn.location = (-250, -250)
         tree.links.new(nm.outputs["Image"], bwn.inputs["Image"])
-        tree.links.new(bwn.outputs[0], ng.inputs["Mask"])
+        mout = bwn.outputs[0]
+        if shift != (0.0, 0.0):
+            tm = tree.nodes.new("CompositorNodeTranslate"); tm.location = (-100, -250)
+            tm.inputs["X"].default_value, tm.inputs["Y"].default_value = shift
+            tree.links.new(mout, tm.inputs["Image"])
+            mout = tm.outputs["Image"]
+        tree.links.new(mout, ng.inputs["Mask"])
     tree.links.new(ng.outputs["Image"], o.inputs["Image"])
     tree.links.new(ng.outputs["Image"], v.inputs[0])
     sc.render.resolution_x, sc.render.resolution_y = img.size

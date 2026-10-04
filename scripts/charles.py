@@ -14,6 +14,7 @@ argv = sys.argv[sys.argv.index("--") + 1:]
 image_path, out_path = os.path.abspath(argv[0]), os.path.abspath(argv[1])
 overrides = json.loads(argv[2]) if len(argv) > 2 and argv[2].strip() else {}
 
+scene_opts_center = overrides.pop("_center", True)
 params = dict(cn.DEFAULTS)
 unknown = set(overrides) - set(params)
 if unknown:
@@ -21,6 +22,7 @@ if unknown:
 for k, v in overrides.items():
     params[k] = cn.lin(v) if k in cn.COLOR_KEYS else v  # 色は "#RRGGBB" で指定
 
+shift = (0.0, 0.0)
 mask_path = os.path.abspath(argv[3]) if len(argv) > 3 and argv[3].strip() and os.path.exists(argv[3]) else None
 if mask_path is None:
     params["Shadow Strength"] = 0.0  # マスクが無いと全面が影になるため
@@ -31,13 +33,20 @@ elif "Ground Y" not in overrides:
     w, h = mi.size
     a = np.array(mi.pixels[:], dtype=np.float32).reshape(h, w, 4)[:, :, 0]
     rows = np.where((a > 0.5).any(axis=1))[0]
+    cols = np.where((a > 0.5).any(axis=0))[0]
     gy = float(rows.min()) / h if len(rows) else 0.0
+    # 被写体を画面中央へ（"_center": false で無効）。ずれが小さい／被写体が大きいときは動かさない
+    if len(rows) and scene_opts_center:
+        dx, dy = w / 2 - (cols.min() + cols.max()) / 2, h / 2 - (rows.min() + rows.max()) / 2
+        if max(abs(dx) / w, abs(dy) / h) > 0.03 and (cols.max() - cols.min()) < 0.9 * w:
+            shift = (float(dx), float(dy))
+            gy = float(rows.min() + dy) / h
     params["Ground Y"] = gy
     if gy < 0.03:  # 被写体が下端に接している（花など）なら影は付けない
         params["Shadow Strength"] = 0.0
     print("ground y:", gy)
 g = cn.build(defaults=params)
-ng = cn.setup_scene(image_path, out_path, mask_path=mask_path)
+ng = cn.setup_scene(image_path, out_path, mask_path=mask_path, shift=shift)
 sc = bpy.context.scene
 try:
     sc.render.engine = "CYCLES"
