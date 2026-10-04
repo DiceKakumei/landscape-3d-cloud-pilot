@@ -21,8 +21,22 @@ if unknown:
 for k, v in overrides.items():
     params[k] = cn.lin(v) if k in cn.COLOR_KEYS else v  # 色は "#RRGGBB" で指定
 
-g = cn.build(defaults=params)
 mask_path = os.path.abspath(argv[3]) if len(argv) > 3 and argv[3].strip() and os.path.exists(argv[3]) else None
+if mask_path is None:
+    params["Shadow Strength"] = 0.0  # マスクが無いと全面が影になるため
+elif "Ground Y" not in overrides:
+    # マスクの最下端を「接地の高さ」にする（Blenderの画像は下の行から並ぶ）
+    import numpy as np
+    mi = bpy.data.images.load(mask_path, check_existing=True)
+    w, h = mi.size
+    a = np.array(mi.pixels[:], dtype=np.float32).reshape(h, w, 4)[:, :, 0]
+    rows = np.where((a > 0.5).any(axis=1))[0]
+    gy = float(rows.min()) / h if len(rows) else 0.0
+    params["Ground Y"] = gy
+    if gy < 0.03:  # 被写体が下端に接している（花など）なら影は付けない
+        params["Shadow Strength"] = 0.0
+    print("ground y:", gy)
+g = cn.build(defaults=params)
 ng = cn.setup_scene(image_path, out_path, mask_path=mask_path)
 sc = bpy.context.scene
 try:

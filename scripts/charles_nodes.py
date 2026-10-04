@@ -34,8 +34,13 @@ DEFAULTS = {
     "BG Stain": lin("#b8995c"), # 背景のしみ・日焼けの色
     "BG Mottle": 1.0,          # しみ・むらの強さ（0=無地）
     "BG Fiber": 0.18,           # 和紙の繊維の強さ
+    "Shadow Strength": 0.5,     # 接地の影の濃さ（マスク接続時のみ。0=なし）
+    "Ground Y": 0.0,            # 被写体が地面に接する高さ（0=下端, 1=上端）
+    "Shadow Height": 0.08,      # 影の厚み（被写体を縦につぶす倍率。小さいほど薄い）
+    "Shadow Blur": 14.0,        # 影のぼかし(px)
+    "Shadow Color": lin("#7a6340"),  # 影の色
 }
-COLOR_KEYS = ("Ink", "Dark", "Mid", "Paper", "BG Color", "BG Stain")
+COLOR_KEYS = ("Ink", "Dark", "Mid", "Paper", "BG Color", "BG Stain", "Shadow Color")
 
 
 def build(name="Charles", defaults=DEFAULTS):
@@ -50,7 +55,8 @@ def build(name="Charles", defaults=DEFAULTS):
     ranges = {"Exposure": (-3, 4), "Flatten": (0, 30), "Deep Point": (0, 1), "Dark Point": (0, 1), "Light Point": (0, 1),
               "Color Keep": (0, 1), "Line Blur": (0, 10), "Line Gain": (0, 30),
               "Line Threshold": (0, 1), "Line Strength": (0, 1), "Grain": (0, 0.5),
-              "Vignette": (0, 1), "BG Mottle": (0, 1), "BG Fiber": (0, 1)}
+              "Vignette": (0, 1), "BG Mottle": (0, 1), "BG Fiber": (0, 1),
+              "Shadow Strength": (0, 1), "Ground Y": (0, 1), "Shadow Height": (0.01, 1), "Shadow Blur": (0, 100)}
     for k, v in defaults.items():
         if k in COLOR_KEYS:
             s = it.new_socket(k, in_out="INPUT", socket_type="NodeSocketColor")
@@ -199,6 +205,27 @@ def build(name="Charles", defaults=DEFAULTS):
     nf.inputs["Detail"].default_value = 3.0
     L.new(fv.outputs[0], nf.inputs["Vector"])
     bg = mix(800, -450, I["BG Fiber"], stain, nf.outputs["Color"], blend="OVERLAY")
+    # --- 接地の影：マスクを縦につぶして地面の高さに置き、ぼかして背景に重ねる ---
+    info = node("CompositorNodeImageInfo", 300, -1100)
+    L.new(I["Image"], info.inputs["Image"])
+    hsep = node("ShaderNodeSeparateXYZ", 450, -1100)
+    L.new(info.outputs["Dimensions"], hsep.inputs[0])
+    gd = math("MULTIPLY", 600, -1100, math("SUBTRACT", 520, -1100, I["Ground Y"], 0.5), hsep.outputs["Y"])
+    sq = node("CompositorNodeScale", 700, -1100)
+    sq.inputs["X"].default_value = 1.0
+    L.new(I["Mask"], sq.inputs["Image"])
+    L.new(I["Shadow Height"], sq.inputs["Y"])
+    tr = node("CompositorNodeTranslate", 900, -1100)
+    L.new(sq.outputs["Image"], tr.inputs["Image"])
+    L.new(math("MULTIPLY", 800, -1200, math("SUBTRACT", 700, -1200, 1.0, I["Shadow Height"]), gd), tr.inputs["Y"])
+    shb = node("CompositorNodeBlur", 1100, -1100)
+    ssz = node("ShaderNodeCombineXYZ", 1000, -1200)
+    L.new(I["Shadow Blur"], ssz.inputs[0])
+    L.new(math("MULTIPLY", 950, -1250, I["Shadow Blur"], 0.5), ssz.inputs[1])
+    L.new(tr.outputs["Image"], shb.inputs["Image"])
+    L.new(ssz.outputs[0], shb.inputs["Size"])
+    sh_f = math("MULTIPLY", 1300, -1100, shb.outputs[0], I["Shadow Strength"], clamp=True)
+    bg = mix(1500, -450, sh_f, bg, I["Shadow Color"])
     ng_ = mix(950, 100, f, bg, ng_)
     lines = math("MULTIPLY", 950, -300, lines, f)
 
