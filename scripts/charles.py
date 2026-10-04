@@ -39,8 +39,20 @@ elif "Ground Y" not in overrides:
     if len(rows) and scene_opts_center:
         dx, dy = w / 2 - (cols.min() + cols.max()) / 2, h / 2 - (rows.min() + rows.max()) / 2
         if max(abs(dx) / w, abs(dy) / h) > 0.03 and (cols.max() - cols.min()) < 0.9 * w:
-            shift = (float(dx), float(dy))
-            gy = float(rows.min() + dy) / h
+            # 画像とマスクを同じだけ巻き戻しシフト（被写体の外は背景カットで消えるので端の巻き込みは無害）
+            import shutil, subprocess
+            ix, iy = int(round(dx)), int(round(dy))  # iy は上向きが正（Blenderの行順）
+            if shutil.which("convert"):
+                for pth in (image_path, mask_path):
+                    out = os.path.splitext(pth)[0] + "_shifted.png"
+                    subprocess.run(["convert", pth, "-roll", f"{ix:+d}{-iy:+d}", out], check=True)
+                    if pth == image_path:
+                        image_path = out
+                    else:
+                        mask_path = out
+                gy = float(rows.min() + iy) / h
+            else:
+                print("convert が無いのでセンタリングをスキップ")
     params["Ground Y"] = gy
     if gy < 0.03:  # 被写体が下端に接している（花など）なら影は付けない
         params["Shadow Strength"] = 0.0
