@@ -38,7 +38,7 @@ DEFAULTS = {
     "Shadow Strength": 0.5,     # 接地の影の濃さ（マスク接続時のみ。0=なし）
     "Ground Y": 0.0,            # 被写体が地面に接する高さ（0=下端, 1=上端）
     "Shadow Height": 0.08,      # 影の厚み（被写体を縦につぶす倍率。小さいほど薄い）
-    "Shadow Wobble": 45.0,      # 影の揺らぎ(px)。大きいほどふにゃっとした形
+    "Shadow Wobble": 90.0,      # 影の揺らぎ(px)。大きいほどふにゃっとした形
     "Shadow Blur": 14.0,        # 影のぼかし(px)
     "Shadow Color": lin("#7a6340"),  # 影の色
 }
