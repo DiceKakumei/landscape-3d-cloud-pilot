@@ -30,8 +30,12 @@ DEFAULTS = {
     "Dark": lin("#a8524f"),     # 暗部の色（赤茶）
     "Mid": lin("#c8bb8c"),      # 中間の色（カーキ）
     "Paper": lin("#f2eedb"),    # 明部・紙の色（生成り）
+    "BG Color": lin("#e8dcaa"), # 背景の紙の地色（古い和紙の黄ばみ）
+    "BG Stain": lin("#bfa46a"), # 背景のしみ・日焼けの色
+    "BG Mottle": 0.55,          # しみ・むらの強さ（0=無地）
+    "BG Fiber": 0.12,           # 和紙の繊維の強さ
 }
-COLOR_KEYS = ("Ink", "Dark", "Mid", "Paper")
+COLOR_KEYS = ("Ink", "Dark", "Mid", "Paper", "BG Color", "BG Stain")
 
 
 def build(name="Charles", defaults=DEFAULTS):
@@ -46,7 +50,7 @@ def build(name="Charles", defaults=DEFAULTS):
     ranges = {"Exposure": (-3, 4), "Flatten": (0, 30), "Deep Point": (0, 1), "Dark Point": (0, 1), "Light Point": (0, 1),
               "Color Keep": (0, 1), "Line Blur": (0, 10), "Line Gain": (0, 30),
               "Line Threshold": (0, 1), "Line Strength": (0, 1), "Grain": (0, 0.5),
-              "Vignette": (0, 1)}
+              "Vignette": (0, 1), "BG Mottle": (0, 1), "BG Fiber": (0, 1)}
     for k, v in defaults.items():
         if k in COLOR_KEYS:
             s = it.new_socket(k, in_out="INPUT", socket_type="NodeSocketColor")
@@ -180,7 +184,21 @@ def build(name="Charles", defaults=DEFAULTS):
     L.new(msz.outputs[0], mb.inputs["Size"])
     # 残す割合 f = 1 - (1 - マスク) * Background Cut
     f = math("SUBTRACT", 900, -900, 1.0, math("MULTIPLY", 800, -900, math("SUBTRACT", 700, -1000, 1.0, mb.outputs[0]), I["Background Cut"]), clamp=True)
-    bg = mix(750, -150, I["Grain"], I["Paper"], nz.outputs["Color"], blend="OVERLAY")
+    # 背景は古い和紙風：低周波のしみ＋横に引き伸ばしたノイズの繊維
+    nm = node("ShaderNodeTexNoise", 500, -450)
+    nm.inputs["Scale"].default_value = 2.5
+    nm.inputs["Detail"].default_value = 6.0
+    nm.inputs["Roughness"].default_value = 0.6
+    L.new(co.outputs["Normalized"], nm.inputs["Vector"])
+    stain = mix(650, -450, math("MULTIPLY", 560, -520, nm.outputs["Fac"], I["BG Mottle"], clamp=True), I["BG Color"], I["BG Stain"])
+    fv = node("ShaderNodeVectorMath", 300, -800, operation="MULTIPLY")
+    fv.inputs[1].default_value = (260.0, 6.0, 1.0)
+    L.new(co.outputs["Normalized"], fv.inputs[0])
+    nf = node("ShaderNodeTexNoise", 500, -800)
+    nf.inputs["Scale"].default_value = 1.0
+    nf.inputs["Detail"].default_value = 3.0
+    L.new(fv.outputs[0], nf.inputs["Vector"])
+    bg = mix(800, -450, I["BG Fiber"], stain, nf.outputs["Color"], blend="OVERLAY")
     ng_ = mix(950, 100, f, bg, ng_)
     lines = math("MULTIPLY", 950, -300, lines, f)
 
