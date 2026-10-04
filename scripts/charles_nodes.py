@@ -103,7 +103,8 @@ def build(name="Charles", defaults=DEFAULTS):
     # --- 明るさ(0〜1)を段数でポスタライズ ---
     bw = node("CompositorNodeRGBToBW", -1350, 300)
     L.new(kw.outputs[0], bw.inputs["Image"])
-    lum = bw.outputs[0]
+    # リニア輝度を見た目の明るさ(ガンマ補正後)にしてから段分けする
+    lum = math("POWER", -1300, 400, math("MAXIMUM", -1300, 450, bw.outputs[0], 0.0), 1 / 2.2)
     stp = math("MAXIMUM", -1350, 150, I["Steps"], 2.0)
     q = math("DIVIDE", -1000, 250, math("FLOOR", -1150, 250, math("MULTIPLY", -1250, 250, lum, stp)), stp, clamp=True)
     # 最明部を取りこぼさないよう、段の中央に寄せて 0〜1 に再正規化
