@@ -16,7 +16,7 @@ def lin(hexstr):
 DEFAULTS = {
     "Exposure": 0.0,        # 入力の明るさ補正(EV)。夜景など暗い写真は+にする
     "Flatten": 5.0,         # 面をならす強さ（Kuwahara半径px。大きいほどベタ塗りっぽい）
-    "Steps": 4.0,           # 明暗の段数（ベタ塗りの色数に相当）
+    "Deep Point": 0.12,     # この明るさ以下を最暗色（Ink）にする
     "Dark Point": 0.38,     # この明るさ以下を「暗色（赤茶）」にする
     "Light Point": 0.72,    # この明るさ以上を「紙色」にする
     "Color Keep": 0.35,     # 元写真の色をどれだけ残すか（0=完全にパレット色）
@@ -43,7 +43,7 @@ def build(name="Charles", defaults=DEFAULTS):
 
     s = it.new_socket("Image", in_out="INPUT", socket_type="NodeSocketColor")
     s.default_value = (0, 0, 0, 1)
-    ranges = {"Exposure": (-3, 4), "Flatten": (0, 30), "Steps": (2, 8), "Dark Point": (0, 1), "Light Point": (0, 1),
+    ranges = {"Exposure": (-3, 4), "Flatten": (0, 30), "Deep Point": (0, 1), "Dark Point": (0, 1), "Light Point": (0, 1),
               "Color Keep": (0, 1), "Line Blur": (0, 10), "Line Gain": (0, 30),
               "Line Threshold": (0, 1), "Line Strength": (0, 1), "Grain": (0, 0.5),
               "Vignette": (0, 1)}
@@ -106,25 +106,18 @@ def build(name="Charles", defaults=DEFAULTS):
     L.new(kw.outputs[0], bw.inputs["Image"])
     # リニア輝度を見た目の明るさ(ガンマ補正後)にしてから段分けする
     lum = math("POWER", -1300, 400, math("MAXIMUM", -1300, 450, bw.outputs[0], 0.0), 1 / 2.2)
-    stp = math("MAXIMUM", -1350, 150, I["Steps"], 2.0)
-    q = math("DIVIDE", -1000, 250, math("FLOOR", -1150, 250, math("MULTIPLY", -1250, 250, lum, stp)), stp, clamp=True)
-    # 最明部を取りこぼさないよう、段の中央に寄せて 0〜1 に再正規化
-    q = math("DIVIDE", -850, 250, q, math("SUBTRACT", -1000, 100, 1.0, math("DIVIDE", -1100, 100, 1.0, stp)), clamp=True)
+    # --- 明るさのしきい値で4色にベタ塗り：Ink(最暗)→Dark→Mid→Paper ---
+    def edge(x, y, point):
+        m = node("ShaderNodeMapRange", x, y, clamp=True)  # 境目だけ±0.02でなめらかにして階段のギザギザを防ぐ
+        L.new(lum, m.inputs["Value"])
+        L.new(math("SUBTRACT", x - 100, y - 100, point, 0.02), m.inputs["From Min"])
+        L.new(math("ADD", x - 100, y - 160, point, 0.02), m.inputs["From Max"])
+        return m.outputs["Result"]
 
-    # --- 3色パレットへマップ：暗(Dark)→中(Mid)→明(Paper) ---
-    # t1: Dark Point〜(Dark+Light)/2 で Dark→Mid、t2: 中間点〜Light Point で Mid→Paper
-    midp = math("MULTIPLY", -850, 50, math("ADD", -950, 50, I["Dark Point"], I["Light Point"]), 0.5)
-    t1 = node("ShaderNodeMapRange", -650, 250, clamp=True)
-    L.new(q, t1.inputs["Value"])
-    L.new(I["Dark Point"], t1.inputs["From Min"])
-    L.new(midp, t1.inputs["From Max"])
-    t2 = node("ShaderNodeMapRange", -650, 50, clamp=True)
-    L.new(q, t2.inputs["Value"])
-    L.new(midp, t2.inputs["From Min"])
-    L.new(I["Light Point"], t2.inputs["From Max"])
-    # 段数で階段状にした t をさらに2値化気味に（Steps が低いとくっきりした面になる）
-    pal = mix(-450, 250, t1.outputs["Result"], I["Dark"], I["Mid"])
-    pal = mix(-250, 250, t2.outputs["Result"], pal, I["Paper"])
+    pal = mix(-450, 250, edge(-650, 250, I["Deep Point"]), I["Ink"], I["Dark"])
+    pal = mix(-300, 250, edge(-650, 50, I["Dark Point"]), pal, I["Mid"])
+    pal = mix(-150, 250, edge(-650, -150, I["Light Point"]), pal, I["Paper"])
+    q = lum  # デバッグ用出力
 
     # --- 元写真の色を少し残す（彩度を落とした写真色をポスタライズして混ぜる） ---
     hs = node("CompositorNodeHueSat", -1350, 550)
