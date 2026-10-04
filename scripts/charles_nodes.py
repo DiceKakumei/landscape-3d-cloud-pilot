@@ -31,9 +31,9 @@ DEFAULTS = {
     "Mid": lin("#c8bb8c"),      # 中間の色（カーキ）
     "Paper": lin("#f2eedb"),    # 明部・紙の色（生成り）
     "BG Color": lin("#e8dcaa"), # 背景の紙の地色（古い和紙の黄ばみ）
-    "BG Stain": lin("#bfa46a"), # 背景のしみ・日焼けの色
-    "BG Mottle": 0.55,          # しみ・むらの強さ（0=無地）
-    "BG Fiber": 0.12,           # 和紙の繊維の強さ
+    "BG Stain": lin("#b8995c"), # 背景のしみ・日焼けの色
+    "BG Mottle": 1.0,          # しみ・むらの強さ（0=無地）
+    "BG Fiber": 0.3,           # 和紙の繊維の強さ
 }
 COLOR_KEYS = ("Ink", "Dark", "Mid", "Paper", "BG Color", "BG Stain")
 
