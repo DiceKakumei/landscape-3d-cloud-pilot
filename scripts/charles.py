@@ -1,5 +1,5 @@
 # シャルルMV風フィルターを画像にかけるエントリスクリプト（Blender 5.0 headless）
-# blender --background --python scripts/charles.py -- <入力画像> <出力PNG> '<上書きパラメータJSON>'
+# blender --background --python scripts/charles.py -- <入力画像> <出力PNG> '<上書きパラメータJSON>' [被写体マスク画像]
 # ノードの中身は scripts/charles_nodes.py（原本: 1_アプリ開発/シャルルフィルター/charles_nodes.py）
 import json
 import os
@@ -22,7 +22,8 @@ for k, v in overrides.items():
     params[k] = cn.lin(v) if k in cn.COLOR_KEYS else v  # 色は "#RRGGBB" で指定
 
 g = cn.build(defaults=params)
-ng = cn.setup_scene(image_path, out_path)
+mask_path = os.path.abspath(argv[3]) if len(argv) > 3 and argv[3].strip() and os.path.exists(argv[3]) else None
+ng = cn.setup_scene(image_path, out_path, mask_path=mask_path)
 sc = bpy.context.scene
 try:
     sc.render.engine = "CYCLES"

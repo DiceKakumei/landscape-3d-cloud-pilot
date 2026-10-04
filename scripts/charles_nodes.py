@@ -55,6 +55,13 @@ def build(name="Charles", defaults=DEFAULTS):
             s = it.new_socket(k, in_out="INPUT", socket_type="NodeSocketFloat")
             s.default_value = v
             s.min_value, s.max_value = ranges[k]
+    # 被写体マスク（白=被写体、黒=背景）。未接続なら全面白＝背景を消さない
+    s = it.new_socket("Mask", in_out="INPUT", socket_type="NodeSocketFloat")
+    s.default_value = 1.0
+    s.min_value, s.max_value = 0.0, 1.0
+    for k, v, lo, hi in (("Background Cut", 1.0, 0.0, 1.0), ("Mask Feather", 2.0, 0.0, 30.0)):
+        s = it.new_socket(k, in_out="INPUT", socket_type="NodeSocketFloat")
+        s.default_value, s.min_value, s.max_value = v, lo, hi
     it.new_socket("Image", in_out="OUTPUT", socket_type="NodeSocketColor")
     it.new_socket("Lines", in_out="OUTPUT", socket_type="NodeSocketFloat")
     it.new_socket("Tone", in_out="OUTPUT", socket_type="NodeSocketFloat")
@@ -164,6 +171,19 @@ def build(name="Charles", defaults=DEFAULTS):
     L.new(co.outputs["Normalized"], nz.inputs["Vector"])
     ng_ = mix(750, 100, I["Grain"], ink, nz.outputs["Color"], blend="OVERLAY")
 
+    # --- 背景カット：マスクの外は紙色だけにする（線も塗りも消える） ---
+    mb = node("CompositorNodeBlur", 700, -900)
+    msz = node("ShaderNodeCombineXYZ", 550, -950)
+    L.new(I["Mask Feather"], msz.inputs[0])
+    L.new(I["Mask Feather"], msz.inputs[1])
+    L.new(I["Mask"], mb.inputs["Image"])
+    L.new(msz.outputs[0], mb.inputs["Size"])
+    # 残す割合 f = 1 - (1 - マスク) * Background Cut
+    f = math("SUBTRACT", 900, -900, 1.0, math("MULTIPLY", 800, -900, math("SUBTRACT", 700, -1000, 1.0, mb.outputs[0]), I["Background Cut"]), clamp=True)
+    bg = mix(750, -150, I["Grain"], I["Paper"], nz.outputs["Color"], blend="OVERLAY")
+    ng_ = mix(950, 100, f, bg, ng_)
+    lines = math("MULTIPLY", 950, -300, lines, f)
+
     # --- ビネット：四隅を紙のやや暗い色に寄せる ---
     vl = node("ShaderNodeVectorMath", 300, -600, operation="LENGTH")
     L.new(co.outputs["Uniform"], vl.inputs[0])
@@ -180,7 +200,7 @@ def build(name="Charles", defaults=DEFAULTS):
     return g
 
 
-def setup_scene(image_path, out_path, group_name="Charles"):
+def setup_scene(image_path, out_path, group_name="Charles", mask_path=None):
     sc = bpy.context.scene
     g = bpy.data.node_groups[group_name]
     tree = sc.compositing_node_group
@@ -195,6 +215,13 @@ def setup_scene(image_path, out_path, group_name="Charles"):
     o = tree.nodes.new("NodeGroupOutput"); o.location = (250, 0)
     v = tree.nodes.new("CompositorNodeViewer"); v.location = (250, -200)
     tree.links.new(ni.outputs["Image"], ng.inputs["Image"])
+    if mask_path:  # 被写体マスク画像（白=被写体）を読み込んでグループの Mask に接続
+        mimg = bpy.data.images.load(mask_path, check_existing=True)
+        mimg.colorspace_settings.name = "Non-Color"
+        nm = tree.nodes.new("CompositorNodeImage"); nm.image = mimg; nm.location = (-400, -250)
+        bwn = tree.nodes.new("CompositorNodeRGBToBW"); bwn.location = (-250, -250)
+        tree.links.new(nm.outputs["Image"], bwn.inputs["Image"])
+        tree.links.new(bwn.outputs[0], ng.inputs["Mask"])
     tree.links.new(ng.outputs["Image"], o.inputs["Image"])
     tree.links.new(ng.outputs["Image"], v.inputs[0])
     sc.render.resolution_x, sc.render.resolution_y = img.size

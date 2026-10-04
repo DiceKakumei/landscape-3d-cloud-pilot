@@ -16,6 +16,10 @@ on:
         description: 'Charlesグループの上書きパラメータ（JSON）。省略時はスクリプトの初期値'
         required: false
         default: "{}"
+      cutout:
+        description: '被写体だけ残す（rembgで自動マスク生成）。true/false'
+        required: false
+        default: "false"
       tag:
         description: '結果を添付するReleaseのタグ名（例: shibuya-day-v1）'
         required: true
@@ -48,11 +52,18 @@ jobs:
           esac
           ls -la input
 
+      - name: Make subject mask (rembg)
+        if: ${{ inputs.cutout == 'true' }}
+        run: |
+          pip install -q "rembg[cpu,cli]" onnxruntime
+          rembg i -om input/source.* input/mask.png
+          ls -la input
+
       - name: Apply Charles filter
         env:
           PARAMS: ${{ inputs.params_json }}
         run: |
-          blender --background --python scripts/charles.py -- input/source.* "output/${{ inputs.tag }}.png" "$PARAMS"
+          blender --background --python scripts/charles.py -- input/source.* "output/${{ inputs.tag }}.png" "$PARAMS" input/mask.png
           ls -la output
 
       - name: Upload to release
