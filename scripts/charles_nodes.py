@@ -33,7 +33,7 @@ DEFAULTS = {
     "BG Color": lin("#e8dcaa"), # 背景の紙の地色（古い和紙の黄ばみ）
     "BG Stain": lin("#b8995c"), # 背景のしみ・日焼けの色
     "BG Mottle": 1.0,          # しみ・むらの強さ（0=無地）
-    "BG Fiber": 0.3,           # 和紙の繊維の強さ
+    "BG Fiber": 0.18,           # 和紙の繊維の強さ
 }
 COLOR_KEYS = ("Ink", "Dark", "Mid", "Paper", "BG Color", "BG Stain")
 
@@ -192,7 +192,7 @@ def build(name="Charles", defaults=DEFAULTS):
     L.new(co.outputs["Normalized"], nm.inputs["Vector"])
     stain = mix(650, -450, math("MULTIPLY", 560, -520, nm.outputs["Fac"], I["BG Mottle"], clamp=True), I["BG Color"], I["BG Stain"])
     fv = node("ShaderNodeVectorMath", 300, -800, operation="MULTIPLY")
-    fv.inputs[1].default_value = (260.0, 6.0, 1.0)
+    fv.inputs[1].default_value = (110.0, 70.0, 1.0)
     L.new(co.outputs["Normalized"], fv.inputs[0])
     nf = node("ShaderNodeTexNoise", 500, -800)
     nf.inputs["Scale"].default_value = 1.0
