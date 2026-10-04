@@ -16,13 +16,13 @@ def lin(hexstr):
 DEFAULTS = {
     "Exposure": 0.0,        # 入力の明るさ補正(EV)。夜景など暗い写真は+にする
     "Flatten": 5.0,         # 面をならす強さ（Kuwahara半径px。大きいほどベタ塗りっぽい）
-    "Deep Point": 0.12,     # この明るさ以下を最暗色（Ink）にする
-    "Dark Point": 0.38,     # この明るさ以下を「暗色（赤茶）」にする
-    "Light Point": 0.72,    # この明るさ以上を「紙色」にする
+    "Deep Point": 0.08,     # この明るさ以下を最暗色（Ink）にする
+    "Dark Point": 0.30,     # この明るさ以下を「暗色（赤茶）」にする
+    "Light Point": 0.62,    # この明るさ以上を「紙色」にする
     "Color Keep": 0.35,     # 元写真の色をどれだけ残すか（0=完全にパレット色）
-    "Line Blur": 1.2,       # 線を拾う前のぼかし(px)。大きいと線が太く・少なくなる
-    "Line Gain": 6.0,       # 線の拾いやすさ
-    "Line Threshold": 0.10, # これ以下の弱いエッジは線にしない
+    "Line Blur": 2.0,       # 線を拾う前のぼかし(px)。大きいと線が太く・少なくなる
+    "Line Gain": 3.0,       # 線の拾いやすさ
+    "Line Threshold": 0.25, # これ以下の弱いエッジは線にしない
     "Line Strength": 0.95,  # 線の濃さ
     "Grain": 0.06,          # 紙のざらつき
     "Vignette": 0.25,       # 四隅の暗さ
