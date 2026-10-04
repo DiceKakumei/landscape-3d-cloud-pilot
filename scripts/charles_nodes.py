@@ -57,6 +57,7 @@ def build(name="Charles", defaults=DEFAULTS):
             s.min_value, s.max_value = ranges[k]
     it.new_socket("Image", in_out="OUTPUT", socket_type="NodeSocketColor")
     it.new_socket("Lines", in_out="OUTPUT", socket_type="NodeSocketFloat")
+    it.new_socket("Tone", in_out="OUTPUT", socket_type="NodeSocketFloat")
 
     N, L = g.nodes, g.links
 
@@ -182,6 +183,7 @@ def build(name="Charles", defaults=DEFAULTS):
 
     L.new(out, go.inputs["Image"])
     L.new(lines, go.inputs["Lines"])
+    L.new(q, go.inputs["Tone"])
     return g
 
 

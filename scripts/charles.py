@@ -46,6 +46,10 @@ sc.render.filepath = os.path.splitext(out_path)[0] + "_lines.png"
 bpy.ops.render.render(write_still=True)
 print("wrote", sc.render.filepath)
 
+tree.links.new(ng.outputs["Tone"], o.inputs["Image"])
+sc.render.filepath = os.path.splitext(out_path)[0] + "_tone.png"
+bpy.ops.render.render(write_still=True)
+
 # 配布用に node group を .blend にも保存（Appendして使える）
 blend_path = os.path.splitext(out_path)[0] + ".blend"
 bpy.ops.wm.save_as_mainfile(filepath=blend_path)

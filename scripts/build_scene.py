@@ -9,11 +9,22 @@ GitHub Actions上での実行を想定(--background --python このファイル)
 import bpy
 import math
 import os
+import mathutils
 
 WORKSPACE = os.environ.get("GITHUB_WORKSPACE", os.getcwd())
 ASSET_DIR = os.path.join(WORKSPACE, "assets")
 OUTPUT_DIR = os.path.join(WORKSPACE, "output")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+# 太陽の向き(仰角・方位角)。トゥーンシェーディングのマテリアル(N・L計算)と
+# 実際のSunランプの両方でこの値を使い、矛盾がないようにする。
+SUN_ELEVATION_DEG = 20.0
+SUN_AZIMUTH_DEG = 250.0
+_sun_euler = mathutils.Euler(
+    (math.radians(90 - SUN_ELEVATION_DEG), 0.0, math.radians(SUN_AZIMUTH_DEG)), "XYZ"
+)
+_light_travel_dir = _sun_euler.to_matrix() @ mathutils.Vector((0.0, 0.0, -1.0))
+SUN_TO_LIGHT_DIR = tuple(-_light_travel_dir.normalized())
 
 # ---------------------------------------------------------------
 # 0. デフォルトシーンのクリア
@@ -28,18 +39,22 @@ scene = bpy.context.scene
 scene.unit_settings.system = "METRIC"
 
 
-def apply_toon_shading(mat, bands=((0.0, 0.45), (0.4, 0.8), (0.75, 1.2))):
+def apply_toon_shading(mat, light_dir, ao_distance=2.0, bands=((0.0, 0.35), (0.35, 0.75), (0.7, 1.15))):
     """マテリアルをセルシェーディング(トゥーン)化する。
 
-    コンポジット後処理のKuwahara+Posterizeは、木の葉のように1ピクセル単位で
-    色が変わるテクスチャに対して不安定(市松模様のノイズ・全体が黒に潰れる等)
-    になる不具合が実際に何度も出た。正攻法として、マテリアル側で
-    Diffuse BSDF → Shader to RGB → ColorRamp(CONSTANT補間)で
-    「陰影(明るさ)」だけを階調バンドに量子化し、それを元のBase Colorに
-    掛け合わせる。色そのものの情報(葉の色ムラ等)はそのまま保持しつつ、
-    陰影だけがフラットな面になるため、テクスチャの細かさに影響されず
-    ノイズが出ない。
+    最初はDiffuse BSDF→Shader to RGB→ColorRampという定石構成を試したが、
+    **Shader to RGBはCyclesでは光源方向やキャストシャドウを正しく反映しない
+    (Eevee向けの機能で、Cyclesではほぼ一定値を返す)**という実測結果が出た
+    (影が完全に消え、ベンチ・地面が一律の明るさになった)。
+    代わりに、法線と太陽方向の内積(N・L、Cyclesでも正しく計算される)と
+    Ambient Occlusionノード(Cyclesで正しくレイトレースされ、近くの物体に
+    よる遮蔽=接触影も拾える)を組み合わせて陰影係数を作り、それを
+    ColorRamp(CONSTANT補間)で階調バンドに量子化してから元のBase Colorに
+    掛け合わせる。
 
+    light_dir: (x, y, z) 太陽に向かう方向ベクトル(正規化済み、ワールド座標)。
+    ao_distance: AOのサンプリング距離(m)。木のような大きい物体は
+    ベンチのような小さい物体より大きめの値が必要な場合がある。
     bandsは (閾値, 明るさ倍率) のタプルのリスト。閾値は昇順。
     """
     nt = mat.node_tree
@@ -62,8 +77,26 @@ def apply_toon_shading(mat, bands=((0.0, 0.45), (0.4, 0.8), (0.75, 1.2))):
     color_lift = nt.nodes.new("ShaderNodeGamma")
     color_lift.inputs["Gamma"].default_value = 0.6
 
-    diffuse = nt.nodes.new("ShaderNodeBsdfDiffuse")
-    shader_to_rgb = nt.nodes.new("ShaderNodeShaderToRGB")
+    geometry = nt.nodes.new("ShaderNodeNewGeometry")
+    light_vec = nt.nodes.new("ShaderNodeCombineXYZ")
+    light_vec.inputs[0].default_value = light_dir[0]
+    light_vec.inputs[1].default_value = light_dir[1]
+    light_vec.inputs[2].default_value = light_dir[2]
+    dot = nt.nodes.new("ShaderNodeVectorMath")
+    dot.operation = "DOT_PRODUCT"
+    # 内積(-1..1)を明るさ(0..1)に変換: x*0.5+0.5
+    remap = nt.nodes.new("ShaderNodeMath")
+    remap.operation = "MULTIPLY_ADD"
+    remap.inputs[1].default_value = 0.5
+    remap.inputs[2].default_value = 0.5
+    remap.use_clamp = True
+
+    ao = nt.nodes.new("ShaderNodeAmbientOcclusion")
+    ao.inputs["Distance"].default_value = ao_distance
+
+    shade_factor = nt.nodes.new("ShaderNodeMath")
+    shade_factor.operation = "MULTIPLY"
+
     ramp = nt.nodes.new("ShaderNodeValToRGB")
     ramp.color_ramp.interpolation = "CONSTANT"
     elements = ramp.color_ramp.elements
@@ -83,8 +116,12 @@ def apply_toon_shading(mat, bands=((0.0, 0.45), (0.4, 0.8), (0.75, 1.2))):
     emission = nt.nodes.new("ShaderNodeEmission")
 
     nt.links.new(base_color_output, color_lift.inputs["Color"])
-    nt.links.new(diffuse.outputs["BSDF"], shader_to_rgb.inputs["Shader"])
-    nt.links.new(shader_to_rgb.outputs["Color"], ramp.inputs["Fac"])
+    nt.links.new(geometry.outputs["Normal"], dot.inputs[0])
+    nt.links.new(light_vec.outputs["Vector"], dot.inputs[1])
+    nt.links.new(dot.outputs["Value"], remap.inputs[0])
+    nt.links.new(remap.outputs["Value"], shade_factor.inputs[0])
+    nt.links.new(ao.outputs["AO"], shade_factor.inputs[1])
+    nt.links.new(shade_factor.outputs["Value"], ramp.inputs["Fac"])
     nt.links.new(color_lift.outputs["Color"], shade_mix.inputs[1])
     nt.links.new(ramp.outputs["Color"], shade_mix.inputs[2])
     nt.links.new(shade_mix.outputs["Color"], emission.inputs["Color"])
