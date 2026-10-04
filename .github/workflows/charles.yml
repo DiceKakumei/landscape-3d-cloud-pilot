@@ -1,0 +1,64 @@
+name: Charles filter
+
+# 使い方:
+# gh workflow run charles.yml -f image="https://..." -f params_json='{"Focus Center":0.42}' -f tag=shibuya-day-v1
+# image は URL か、リポジトリ内のパス（assets/xxx.jpg）。
+# 結果は Release（tag名）に添付される（artifact は容量上限で失敗した実績があるため使わない）:
+# gh release download <tag> -R DiceKakumei/landscape-3d-cloud-pilot -D <保存先>
+
+on:
+  workflow_dispatch:
+    inputs:
+      image:
+        description: '入力画像のURL、またはリポジトリ内のパス'
+        required: true
+      params_json:
+        description: 'Charlesグループの上書きパラメータ（JSON）。省略時はスクリプトの初期値'
+        required: false
+        default: "{}"
+      tag:
+        description: '結果を添付するReleaseのタグ名（例: shibuya-day-v1）'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  charles:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Blender
+        run: |
+          curl -L -o blender.tar.xz "https://download.blender.org/release/Blender5.0/blender-5.0.1-linux-x64.tar.xz"
+          tar -xf blender.tar.xz
+          mv blender-5.0.1-linux-x64 blender
+          echo "$(pwd)/blender" >> "$GITHUB_PATH"
+
+      - name: Fetch input image
+        env:
+          IMAGE: ${{ inputs.image }}
+        run: |
+          mkdir -p input output
+          case "$IMAGE" in
+            http*) curl -L -A "Mozilla/5.0 charles-cloud" -o "input/source.${IMAGE##*.}" "$IMAGE" ;;
+            *) cp "$IMAGE" "input/source.${IMAGE##*.}" ;;
+          esac
+          ls -la input
+
+      - name: Apply Charles filter
+        env:
+          PARAMS: ${{ inputs.params_json }}
+        run: |
+          blender --background --python scripts/charles.py -- input/source.* "output/${{ inputs.tag }}.png" "$PARAMS"
+          ls -la output
+
+      - name: Upload to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+          PARAMS: ${{ inputs.params_json }}
+        run: |
+          gh release create "$TAG" output/* --title "$TAG" --notes "params: $PARAMS"
