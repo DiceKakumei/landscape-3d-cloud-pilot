@@ -24,6 +24,9 @@ DEFAULTS = {
     "Line Blur": 2.0,       # 線を拾う前のぼかし(px)。大きいと線が太く・少なくなる
     "Line Gain": 3.0,       # 線の拾いやすさ
     "Line Threshold": 0.25, # これ以下の弱いエッジは線にしない
+    "Inner Lines": 1.0,     # 被写体内部の線（花弁・模様など）の量。0で内部の線を全部消す
+    "Outline": 0.0,         # マスクの縁（外形）に引く輪郭線の濃さ。マスク接続時のみ有効
+    "Outline Width": 3.0,   # 輪郭線の太さ(px)
     "Line Strength": 0.95,  # 線の濃さ
     "Grain": 0.06,          # 紙のざらつき
     "Vignette": 0.25,       # 四隅の暗さ
@@ -56,7 +59,7 @@ def build(name="Charles", defaults=DEFAULTS):
     s.default_value = (0, 0, 0, 1)
     ranges = {"Exposure": (-3, 4), "Flatten": (0, 30), "Deep Point": (0, 1), "Dark Point": (0, 1), "Light Point": (0, 1),
               "Color Keep": (0, 1), "Line Flatten": (0, 40), "Line Blur": (0, 10), "Line Gain": (0, 30),
-              "Line Threshold": (0, 1), "Line Strength": (0, 1), "Grain": (0, 0.5),
+              "Line Threshold": (0, 1), "Line Strength": (0, 1), "Inner Lines": (0, 1), "Outline": (0, 1), "Outline Width": (0, 30), "Grain": (0, 0.5),
               "Vignette": (0, 1), "BG Mottle": (0, 1), "BG Fiber": (0, 1),
               "Shadow Strength": (0, 1), "Ground Y": (0, 1), "Shadow Height": (0.01, 1), "Shadow Blur": (0, 100), "Shadow Wobble": (0, 300)}
     for k, v in defaults.items():
@@ -174,6 +177,21 @@ def build(name="Charles", defaults=DEFAULTS):
     L.new(I["Line Threshold"], ln.inputs["From Min"])
     L.new(math("ADD", -850, -420, I["Line Threshold"], 0.25), ln.inputs["From Max"])
     lines = math("MULTIPLY", -550, -300, ln.outputs["Result"], I["Line Strength"], clamp=True)
+
+    # --- 内部の線を間引き、マスクの縁だけに輪郭線を引けるようにする ---
+    ob = node("CompositorNodeBlur", -1550, -700)
+    osz = node("ShaderNodeCombineXYZ", -1700, -780)
+    L.new(I["Outline Width"], osz.inputs[0])
+    L.new(I["Outline Width"], osz.inputs[1])
+    L.new(I["Mask"], ob.inputs["Image"])
+    L.new(osz.outputs[0], ob.inputs["Size"])
+    osb = node("CompositorNodeFilter", -1350, -700)
+    L.new(ob.outputs[0], osb.inputs["Image"])
+    osb.inputs["Type"].default_value = "Sobel"
+    ow = node("CompositorNodeRGBToBW", -1150, -700)
+    L.new(osb.outputs[0], ow.inputs["Image"])
+    outline = math("MULTIPLY", -750, -700, math("MULTIPLY", -950, -700, ow.outputs[0], 4.0, clamp=True), I["Outline"], clamp=True)
+    lines = math("MAXIMUM", -350, -300, math("MULTIPLY", -450, -300, lines, I["Inner Lines"]), outline)
 
     ink = mix(200, 100, lines, fill, I["Ink"])
 
