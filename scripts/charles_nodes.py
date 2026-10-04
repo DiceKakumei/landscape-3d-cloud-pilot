@@ -139,7 +139,11 @@ def build(name="Charles", defaults=DEFAULTS):
     L.new(I["Line Blur"], lsz.inputs[1])
     L.new(I["Image"], lb.inputs["Image"])
     L.new(lsz.outputs[0], lb.inputs["Size"])
-    sb = node("CompositorNodeFilter", -1350, -300, filter_type="SOBEL")
+    sb = node("CompositorNodeFilter", -1350, -300)
+    # Blender 5.0 ではフィルター種別がノードのプロパティでなく入力ソケット（Menu）になった
+    ft = sb.inputs["Type"]
+    print("filter types:", [i.identifier for i in ft.enum_items] if hasattr(ft, "enum_items") else "n/a")
+    ft.default_value = "Sobel"
     L.new(lb.outputs[0], sb.inputs["Image"])
     eb = node("CompositorNodeRGBToBW", -1150, -300)
     L.new(sb.outputs[0], eb.inputs["Image"])
