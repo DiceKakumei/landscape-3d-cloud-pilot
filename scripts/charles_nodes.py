@@ -14,6 +14,7 @@ def lin(hexstr):
 
 
 DEFAULTS = {
+    "Exposure": 0.0,        # 入力の明るさ補正(EV)。夜景など暗い写真は+にする
     "Flatten": 5.0,         # 面をならす強さ（Kuwahara半径px。大きいほどベタ塗りっぽい）
     "Steps": 4.0,           # 明暗の段数（ベタ塗りの色数に相当）
     "Dark Point": 0.38,     # この明るさ以下を「暗色（赤茶）」にする
@@ -42,7 +43,7 @@ def build(name="Charles", defaults=DEFAULTS):
 
     s = it.new_socket("Image", in_out="INPUT", socket_type="NodeSocketColor")
     s.default_value = (0, 0, 0, 1)
-    ranges = {"Flatten": (0, 30), "Steps": (2, 8), "Dark Point": (0, 1), "Light Point": (0, 1),
+    ranges = {"Exposure": (-3, 4), "Flatten": (0, 30), "Steps": (2, 8), "Dark Point": (0, 1), "Light Point": (0, 1),
               "Color Keep": (0, 1), "Line Blur": (0, 10), "Line Gain": (0, 30),
               "Line Threshold": (0, 1), "Line Strength": (0, 1), "Grain": (0, 0.5),
               "Vignette": (0, 1)}
@@ -92,8 +93,11 @@ def build(name="Charles", defaults=DEFAULTS):
     I = gi.outputs
 
     # --- 面をならす（細かい写真のテクスチャを消してベタ塗りにする） ---
+    ex = node("CompositorNodeExposure", -1750, 300)
+    L.new(I["Image"], ex.inputs["Image"])
+    L.new(I["Exposure"], ex.inputs["Exposure"])
     kw = node("CompositorNodeKuwahara", -1550, 300)
-    L.new(I["Image"], kw.inputs["Image"])
+    L.new(ex.outputs[0], kw.inputs["Image"])
     L.new(I["Flatten"], kw.inputs["Size"])
 
     # --- 明るさ(0〜1)を段数でポスタライズ ---
