@@ -1,0 +1,68 @@
+name: Clock scenes
+
+# 使い方:
+# gh workflow run clockscenes.yml -f tag=clock-v1 -f preview=1
+# 結果は Release（tag名）に添付: gh release download <tag> -R DiceKakumei/landscape-3d-cloud-pilot -D <保存先>
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Releaseのタグ名'
+        required: true
+      preview:
+        description: '1=低解像度の確認用 / 0=本番'
+        required: false
+        default: "1"
+      scenes:
+        description: '対象シーン(JSON配列)'
+        required: false
+        default: "[1,2,3,4]"
+      astro_rot:
+        description: '宇宙飛行士のZ回転(度)'
+        required: false
+        default: "180"
+
+permissions:
+  contents: write
+
+jobs:
+  prep:
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${{ inputs.tag }}" --repo "$GITHUB_REPOSITORY" --title "${{ inputs.tag }}" --notes "preview=${{ inputs.preview }}" || true
+
+  render:
+    needs: prep
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        scene: ${{ fromJSON(inputs.scenes) }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download Blender
+        run: |
+          curl -L -o blender.tar.xz "https://download.blender.org/release/Blender5.0/blender-5.0.1-linux-x64.tar.xz"
+          tar -xf blender.tar.xz
+          mv blender-5.0.1-linux-x64 blender
+          echo "$(pwd)/blender" >> "$GITHUB_PATH"
+      - name: Render
+        env:
+          ASTRO_ROT: ${{ inputs.astro_rot }}
+        run: |
+          mkdir -p output
+          blender --background --python scripts/clockscenes.py -- ${{ matrix.scene }} output/raw.png ${{ inputs.preview }}
+      - name: Glow
+        run: |
+          pip install pillow numpy
+          python scripts/glow.py output/raw.png output/scene${{ matrix.scene }}.png
+      - name: Upload to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp output/raw.png output/scene${{ matrix.scene }}_raw.png
+          gh release upload "${{ inputs.tag }}" output/scene${{ matrix.scene }}.png output/scene${{ matrix.scene }}_raw.png --clobber
