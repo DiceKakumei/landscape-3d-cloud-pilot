@@ -223,13 +223,13 @@ def underwater():
     anim.append(sway)
 
     # 泡の下の大きな貝
-    shell = mat("ffd9e8", 0.25, 0.05, coat=0.8)
+    shell = mat("f5c3da", 0.25, coat=0.8)
     for k in range(-5, 6):
         a_ = k * 0.26
         tube(sc, shell, [(0.5, -0.2, -5.4), (0.5 + math.sin(a_) * 1.6, 0.4, -5.1 + math.cos(a_) * 0.5),
                          (0.5 + math.sin(a_) * 2.7, 1.2, -4.9 + math.cos(a_) * 1.5)], 0.36, 1.1)
     ball(sc, shell, (0.5, -0.5, -5.7), 2.3, scale=(1, 0.8, 0.28))
-    point(sc, (0.5, -2.5, -3.2), "ffe3f1", 160)
+    point(sc, (0.5, -2.5, -3.2), "ffe3f1", 90)
 
     for c, belly, n, cx, cy, cz, rx, rz, size, speed in [
             ("ffb000", "fff1b8", 7, 0, 3, 2.6, 5.2, 1.0, 0.55, 1), ("ff5a36", "ffd6c2", 4, 0.5, -2, -2.7, 4.4, .6, .62, -1),
@@ -420,7 +420,7 @@ def night():
 
 # ---------- 世界3：お菓子 ----------
 def sweets():
-    sc = new_scene("sweets", "ffd7e6", "8fd8ff", 0.8, 2.6, "fff1dd", (45, -30, 0))
+    sc = new_scene("sweets", "ffcfe2", "74c8ff", 0.62, 2.2, "fff1dd", (45, -30, 0))
     anim = []
     ground(sc, mat("ffb3cd", 0.5, sss=.3), -6.5, 0.9, 0.12)
     cream = mat("fff6ea", 0.4, sss=.4)

@@ -23,7 +23,8 @@ cloud_render/
 │   ├── retopo.yml        # 自動リトポ(QuadriFlow Remesh)
 │   ├── animate.yml       # リグ済みベース+Mixamoアニメーションの合成
 │   ├── miniature.yml     # 画像にミニチュア(ティルトシフト)フィルター。Blender 5.0.1、結果はReleaseに添付
-│   └── infinite_zoom.yml # 無限ズーム絵(入れ子の絵に寄り続けるループ動画)。エントリは scripts/infinite_zoom.py
+│   ├── infinite_zoom.yml # 無限ズーム絵(入れ子の絵に寄り続けるループ動画)。エントリは scripts/infinite_zoom.py
+│   └── cg_zoom.yml       # 寄り続けるCGアニメ(水中→夜の街と宇宙→お菓子の縦型ループ)。エントリは scripts/cg_zoom.py
 └── scripts/               # workflowから呼ばれるBlender Pythonエントリスクリプト
     ├── build_scene.py
     ├── retopo_quadriflow.py
