@@ -661,7 +661,7 @@ def portal(canvas, level, center, scale, depth):
     d = np.sqrt(dx * dx + dy * dy)
     mask = np.clip((1 - d) * hw + .5, 0, 1)
     seen = q["seen"] + (1 - q["seen"]) * float(smooth(.05, .75, p))
-    keep = float(1 - smooth(.6, 1.0, p))                       # 縁と光は寄り切る直前まで残す
+    keep = float(1 - smooth(.5, .98, hw / W))                 # 縁と光は縁が画面の外へ出るまで残す
     if q["kind"] == "pearl":
         alpha = (mask * seen * (1 - smooth(.6, 1.0, d) * (.35 + .65 * (1 - p)) * keep))[..., None]
         luster = np.stack([.62 + .38 * np.cos(d * 4 + dx * 2 + k) for k in (0, 2.1, 4.2)], -1)
