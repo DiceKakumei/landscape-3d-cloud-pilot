@@ -1,7 +1,7 @@
-name: Music box
+name: Animated props (music box / watch / camera / chest)
 
 # 使い方:
-# 静止画の確認: gh workflow run musicbox.yml -f tag=musicbox-v1 -f chunks='[[90,90]]'
+# 静止画の確認: gh workflow run musicbox.yml -f script=props_watch -f tag=watch-v1 -f chunks='[[90,90]]'
 # 動画:         gh workflow run musicbox.yml -f tag=musicbox-v1 -f video=1
 # 結果は Release(tag名)に添付: gh release download <tag> -R DiceKakumei/landscape-3d-cloud-pilot -D <保存先>
 
@@ -19,6 +19,10 @@ on:
         description: '1=チャンクを結合してmp4/gifを作る'
         required: false
         default: "0"
+      script:
+        description: 'scripts/ 内のスクリプト名(拡張子なし)'
+        required: false
+        default: "musicbox"
       samples:
         required: false
         default: "24"
@@ -51,7 +55,7 @@ jobs:
           mv blender-5.0.1-linux-x64 blender
           echo "$(pwd)/blender" >> "$GITHUB_PATH"
       - name: Render
-        run: blender --background --python scripts/musicbox.py -- ${{ matrix.range[0] }} ${{ matrix.range[1] }} frames ${{ inputs.samples }}
+        run: blender --background --python scripts/${{ inputs.script }}.py -- ${{ matrix.range[0] }} ${{ matrix.range[1] }} frames ${{ inputs.samples }}
       - name: Upload
         env:
           GH_TOKEN: ${{ github.token }}
@@ -72,6 +76,6 @@ jobs:
           sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
           gh release download "${{ inputs.tag }}" --repo "$GITHUB_REPOSITORY" -p 'chunk_*.tar'
           mkdir frames && for t in chunk_*.tar; do tar -xf $t -C frames; done
-          ffmpeg -y -framerate 24 -pattern_type glob -i 'frames/f*.png' -c:v libx264 -pix_fmt yuv420p -crf 18 musicbox.mp4
-          ffmpeg -y -i musicbox.mp4 -vf "fps=12,scale=480:-1:flags=lanczos,split[a][b];[a]palettegen[p];[b][p]paletteuse" musicbox.gif
-          gh release upload "${{ inputs.tag }}" musicbox.mp4 musicbox.gif --clobber --repo "$GITHUB_REPOSITORY"
+          ffmpeg -y -framerate 24 -pattern_type glob -i 'frames/f*.png' -c:v libx264 -pix_fmt yuv420p -crf 18 ${{ inputs.script }}.mp4
+          ffmpeg -y -i ${{ inputs.script }}.mp4 -vf "fps=12,scale=480:-1:flags=lanczos,split[a][b];[a]palettegen[p];[b][p]paletteuse" ${{ inputs.script }}.gif
+          gh release upload "${{ inputs.tag }}" ${{ inputs.script }}.mp4 ${{ inputs.script }}.gif --clobber --repo "$GITHUB_REPOSITORY"

@@ -4,34 +4,13 @@
 動き: ボタンを押す→蓋が開く→ゼンマイ車→シリンダー→ガバナー車→羽根車が回り、シリンダーのピンが櫛歯を弾く。
 寸法の出典: リサーチ/2026-11-28_オルゴールの機構と寸法.md
 """
-import bpy, bmesh, math, os, sys
-from mathutils import Vector
+import bpy, math, os, sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(sys.argv[sys.argv.index("--python") + 1])))
+from props_lib import *
 
-argv = sys.argv[sys.argv.index("--") + 1:]
-F0, F1, OUT = int(argv[0]), int(argv[1]), argv[2]
-SAMPLES = int(argv[3]) if len(argv) > 3 else 24
+F0, F1, OUT, SAMPLES = args()
 FEND = 144
-bpy.ops.wm.read_factory_settings(use_empty=True)
-sc = bpy.context.scene
-PI = math.pi
-
-
-# ---------- 素材 ----------
-def mat(name, color, metal=0.0, rough=0.5, wood=False):
-    m = bpy.data.materials.new(name); m.use_nodes = True
-    nt = m.node_tree; b = next(n for n in nt.nodes if n.type == "BSDF_PRINCIPLED")
-    b.inputs["Base Color"].default_value = (*color, 1)
-    b.inputs["Metallic"].default_value = metal
-    b.inputs["Roughness"].default_value = rough
-    if wood:  # 木目: 波テクスチャを歪ませて濃淡に
-        w = nt.nodes.new("ShaderNodeTexWave"); w.inputs["Scale"].default_value = 1.2
-        w.inputs["Distortion"].default_value = 6.0; w.inputs["Detail"].default_value = 3
-        r = nt.nodes.new("ShaderNodeValToRGB")
-        r.color_ramp.elements[0].color = (color[0] * 0.55, color[1] * 0.5, color[2] * 0.45, 1)
-        r.color_ramp.elements[1].color = (*color, 1)
-        nt.links.new(w.outputs["Fac"], r.inputs["Fac"]); nt.links.new(r.outputs["Color"], b.inputs["Base Color"])
-    return m
-
+sc = reset()
 
 WOOD = mat("wood", (0.42, 0.2, 0.08), rough=0.35, wood=True)
 TABLE = mat("table", (0.16, 0.09, 0.05), rough=0.5, wood=True)
@@ -39,63 +18,6 @@ VELVET = mat("velvet", (0.35, 0.02, 0.04), rough=0.9)
 BRASS = mat("brass", (0.85, 0.62, 0.3), metal=1.0, rough=0.38)
 STEEL = mat("steel", (0.75, 0.76, 0.78), metal=1.0, rough=0.18)
 DARK = mat("dark_steel", (0.2, 0.2, 0.22), metal=1.0, rough=0.35)
-
-
-# ---------- 形 ----------
-def fin(o, m, parent=None):
-    o.data.materials.append(m)
-    if parent: o.parent = parent
-    for p in o.data.polygons: p.use_smooth = True
-    return o
-
-
-def box(sx, sy, sz, loc, m, parent=None, bevel=0.05):
-    bpy.ops.mesh.primitive_cube_add(size=1, location=loc); o = bpy.context.object
-    o.scale = (sx, sy, sz); bpy.ops.object.transform_apply(scale=True)
-    if bevel:
-        bv = o.modifiers.new("bv", "BEVEL"); bv.width = bevel; bv.segments = 2
-    fin(o, m, parent)
-    for p in o.data.polygons: p.use_smooth = False
-    return o
-
-
-def cyl_x(r, length, loc, m, parent=None, v=48):
-    """X軸向きの円柱"""
-    bpy.ops.mesh.primitive_cylinder_add(radius=r, depth=length, vertices=v, location=loc, rotation=(0, PI / 2, 0))
-    return fin(bpy.context.object, m, parent)
-
-
-def empty(name, loc, parent=None):
-    o = bpy.data.objects.new(name, None); sc.collection.objects.link(o)
-    o.location = loc
-    if parent: o.parent = parent
-    return o
-
-
-def gear(name, r, teeth, thick, m, loc, parent=None, hub=0.25):
-    """X軸を回転軸とする平歯車。歯0番が+Y方向(回転角0)を向く。"""
-    bm = bmesh.new(); h = 2 * r / teeth  # 歯の高さ≒モジュール
-    pts = []
-    for k in range(teeth):
-        a = 2 * PI * k / teeth; s = PI / teeth
-        for da, rr in ((-s * 0.55, r - h * 0.6), (-s * 0.28, r + h * 0.5), (s * 0.28, r + h * 0.5), (s * 0.55, r - h * 0.6)):
-            pts.append(bm.verts.new((-thick / 2, rr * math.cos(a + da), rr * math.sin(a + da))))
-    f = bm.faces.new(pts)
-    ext = bmesh.ops.extrude_face_region(bm, geom=[f])
-    bmesh.ops.translate(bm, vec=(thick, 0, 0), verts=[e for e in ext["geom"] if isinstance(e, bmesh.types.BMVert)])
-    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
-    me = bpy.data.meshes.new(name); bm.to_mesh(me); bm.free()
-    o = bpy.data.objects.new(name, me); sc.collection.objects.link(o); o.location = loc
-    o.data.materials.append(m)
-    if parent: o.parent = parent
-    cyl_x(hub, thick * 1.6, (0, 0, 0), m, o)  # ハブ
-    # 軽量化の穴の代わりに4本スポークの溝(暗い円盤)で歯車らしく
-    if r > 0.6:
-        cyl_x(r * 0.72, thick * 1.02, (0, 0, 0), DARK, o)
-        for k in range(4):
-            b = box(thick * 1.1, r * 1.4, r * 0.14, (0, 0, 0), m, o, bevel=0)
-            b.rotation_euler.x = k * PI / 4
-    return o
 
 
 # ---------- 箱 ----------
@@ -157,7 +79,7 @@ def r_of(t): return M_ * t / 2
 
 gears = {}  # name -> (obj, teeth, center(y,z))
 def place(name, t, yz, x, m=BRASS, thick=0.18):
-    o = gear(name, r_of(t), t, thick, m, (x, yz[0], yz[1]), MV)
+    o = gear(name, r_of(t), t, thick, m, (x, yz[0], yz[1]), MV, dark=DARK)
     gears[name] = (o, t, yz)
     return o
 
@@ -181,7 +103,7 @@ place("Q", 6, Q_yz, GX + 0.3, STEEL)
 cyl_x(0.04, 1.0, (GX + 0.55, *Q_yz), STEEL, MV)
 fan = empty("fan", (GX + 0.9, *Q_yz), MV)  # ガバナーの羽根(2枚)
 for s in (1, -1):
-    b = box(0.03, 0.12, 0.55, (0, 0, s * 0.33), STEEL, fan, bevel=0.01)
+    b = box(0.5, 0.03, 0.55, (0, 0, s * 0.33), STEEL, fan, bevel=0.01)  # 羽根は軸を含む面(空気抵抗で減速)
 cyl_x(0.07, 0.1, (0, 0, 0), STEEL, fan)
 
 
@@ -238,10 +160,10 @@ for n in range(60):
 
 
 def tooth_angle(i, f):
-    a = 0.0; LIFT = math.radians(5)
+    a = 0.0; LIFT = math.radians(12)
     for fp in plucks[i]:
         if fp - 3 <= f <= fp: a += LIFT * (1 - (fp - f) / 3)  # ピンに押し上げられる
-        elif f > fp: a += LIFT * math.exp(-(f - fp) / 5) * math.cos(PI * (f - fp) * 0.9)  # 離れて震える
+        elif f > fp: a += LIFT * math.exp(-(f - fp) / 7) * math.cos(PI * (f - fp) * 0.5)  # 離れて震える
     return a
 
 
@@ -278,9 +200,10 @@ tr = cam.constraints.new("TRACK_TO"); tr.target = tgt; tr.track_axis = "TRACK_NE
 shots = [  # (frame, cam loc, target loc)
     (1, (6, -24, 12), (0, 0, 3.0)),
     (36, (5, -22, 13), (0, 0, 3.5)),
-    (80, (6.0, -12.0, 8.5), (0.5, 0.2, 2.6)),
-    (120, (6.5, -10.0, 6.8), (0.9, 0.3, 2.7)),
-    (144, (6.6, -9.6, 6.5), (1.0, 0.3, 2.7)),
+    (70, (9.5, -6.5, 7.5), (1.8, 0.1, 3.0)),
+    (98, (9.0, -6.0, 7.0), (1.9, 0.1, 3.1)),
+    (120, (-1.0, -6.0, 6.2), (0.0, -0.5, 2.5)),
+    (144, (-0.8, -5.4, 5.8), (0.0, -0.5, 2.5)),
 ]
 for f, cl, tl in shots:
     cam.location = cl; cam.keyframe_insert("location", frame=f)
