@@ -54,6 +54,10 @@ jobs:
           tar -xf blender.tar.xz
           mv blender-5.0.1-linux-x64 blender
           echo "$(pwd)/blender" >> "$GITHUB_PATH"
+      - name: Download HDRI (Poly Haven, CC0)
+        run: |
+          mkdir -p assets
+          curl -L -f --retry 5 -o assets/studio.hdr "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/2k/studio_small_09_2k.hdr" || echo "HDRI skipped"
       - name: Render
         run: blender --background --python scripts/${{ inputs.script }}.py -- ${{ matrix.range[0] }} ${{ matrix.range[1] }} frames ${{ inputs.samples }}
       - name: Upload
