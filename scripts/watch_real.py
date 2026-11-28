@@ -132,7 +132,7 @@ def plate_shape(name, shapes, z, thick, m, edge=POLISH, parent=None):
     """2D形状(点列)の集まりを押し出して重ね、面取りは磨きの素材にする(受けの形)"""
     objs = []
     for i, pts in enumerate(shapes):
-        o = poly(f"{name}_{i}", pts, thick, m, parent or PAR[0], loc=(0, 0, z))
+        o = poly(f"{name}_{i}", pts, thick * (1 + 0.03 * i), m, parent or PAR[0], loc=(0, 0, z))  # 重なる面を同じ高さにしない(黒いムラ防止)
         o.data.materials.append(edge)
         bv = o.modifiers.new("bv", "BEVEL"); bv.width = 0.012; bv.segments = 2; bv.material = 1
         bv.limit_method = "ANGLE"
@@ -545,7 +545,7 @@ else:
     bg.inputs["Color"].default_value = (0.05, 0.05, 0.055, 1)
 area((-9, -11, 13), 2200, 8, (1.0, 0.93, 0.83), WC)
 area((11, 7, 10), 1400, 6, (0.8, 0.88, 1.0), WC)
-area((2, -7, 1.5), 260, 4, (1, 0.97, 0.92), WC)
-area((-3, 8, 2.5), 420, 4, (1, 0.97, 0.92), WC)
+area((2, -7, 1.5), 260, 4, (1, 0.97, 0.92), WC).visible_glossy = False  # 風防に四角い映り込みを作らない
+area((-3, 8, 2.5), 420, 4, (1, 0.97, 0.92), WC).visible_glossy = False
 S.render.use_motion_blur = True; S.render.motion_blur_shutter = 0.5
 render(F0, F1, OUT, SAMPLES, FEND)
