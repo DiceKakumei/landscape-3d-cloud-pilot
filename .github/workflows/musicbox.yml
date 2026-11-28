@@ -50,7 +50,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Download Blender
         run: |
-          curl -L -o blender.tar.xz "https://download.blender.org/release/Blender5.0/blender-5.0.1-linux-x64.tar.xz"
+          curl -L -f --retry 5 --retry-all-errors -o blender.tar.xz "https://download.blender.org/release/Blender5.0/blender-5.0.1-linux-x64.tar.xz"
           tar -xf blender.tar.xz
           mv blender-5.0.1-linux-x64 blender
           echo "$(pwd)/blender" >> "$GITHUB_PATH"
