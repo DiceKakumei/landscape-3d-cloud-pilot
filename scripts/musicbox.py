@@ -36,7 +36,7 @@ def mat(name, color, metal=0.0, rough=0.5, wood=False):
 WOOD = mat("wood", (0.42, 0.2, 0.08), rough=0.35, wood=True)
 TABLE = mat("table", (0.16, 0.09, 0.05), rough=0.5, wood=True)
 VELVET = mat("velvet", (0.35, 0.02, 0.04), rough=0.9)
-BRASS = mat("brass", (0.85, 0.62, 0.3), metal=1.0, rough=0.25)
+BRASS = mat("brass", (0.85, 0.62, 0.3), metal=1.0, rough=0.38)
 STEEL = mat("steel", (0.75, 0.76, 0.78), metal=1.0, rough=0.18)
 DARK = mat("dark_steel", (0.2, 0.2, 0.22), metal=1.0, rough=0.35)
 
@@ -104,8 +104,8 @@ box(40, 30, 1, (0, 0, -0.5), TABLE, bevel=0)  # テーブル
 box(BW, BD, T, (0, 0, T / 2), WOOD)  # 底
 box(BW, T, BH, (0, -BD / 2 + T / 2, BH / 2), WOOD)  # 前
 box(BW, T, BH, (0, BD / 2 - T / 2, BH / 2), WOOD)  # 後
-box(T, BD, BH, (-BW / 2 + T / 2, 0, BH / 2), WOOD)  # 左
-box(T, BD, BH, (BW / 2 - T / 2, 0, BH / 2), WOOD)  # 右
+box(T, BD - 2 * T, BH, (-BW / 2 + T / 2, 0, BH / 2), WOOD)  # 左
+box(T, BD - 2 * T, BH, (BW / 2 - T / 2, 0, BH / 2), WOOD)  # 右
 box(BW - 2 * T, BD - 2 * T, 0.05, (0, 0, T + 0.03), VELVET, bevel=0)  # 内張り
 
 # 蓋: 後ろ上辺の蝶番まわりに回る
@@ -113,8 +113,8 @@ hinge = empty("lid_hinge", (0, BD / 2, BH))
 box(BW, BD, 0.5, (0, -BD / 2, LH - 0.25), WOOD, hinge)  # 天板
 box(BW, T, LH - 0.5, (0, -BD + T / 2, (LH - 0.5) / 2), WOOD, hinge)
 box(BW, T, LH - 0.5, (0, -T / 2, (LH - 0.5) / 2), WOOD, hinge)
-box(T, BD, LH - 0.5, (-BW / 2 + T / 2, -BD / 2, (LH - 0.5) / 2), WOOD, hinge)
-box(T, BD, LH - 0.5, (BW / 2 - T / 2, -BD / 2, (LH - 0.5) / 2), WOOD, hinge)
+box(T, BD - 2 * T, LH - 0.5, (-BW / 2 + T / 2, -BD / 2, (LH - 0.5) / 2), WOOD, hinge)
+box(T, BD - 2 * T, LH - 0.5, (BW / 2 - T / 2, -BD / 2, (LH - 0.5) / 2), WOOD, hinge)
 box(BW - 2 * T, BD - 2 * T, 0.05, (0, -BD / 2, LH - 0.55), VELVET, hinge, bevel=0)
 for x in (-3.5, 3.5):  # 蝶番の金具
     cyl_x(0.18, 1.6, (x, BD / 2 + 0.05, BH), BRASS)
@@ -278,9 +278,9 @@ tr = cam.constraints.new("TRACK_TO"); tr.target = tgt; tr.track_axis = "TRACK_NE
 shots = [  # (frame, cam loc, target loc)
     (1, (6, -24, 12), (0, 0, 3.0)),
     (36, (5, -22, 13), (0, 0, 3.5)),
-    (80, (6.5, -9.5, 7.5), (0.6, 0.6, 2.4)),
-    (120, (7.5, -7.0, 5.6), (0.9, 0.7, 2.6)),
-    (144, (7.8, -6.6, 5.3), (1.0, 0.7, 2.6)),
+    (80, (6.0, -12.0, 8.5), (0.5, 0.2, 2.6)),
+    (120, (6.5, -10.0, 6.8), (0.9, 0.3, 2.7)),
+    (144, (6.6, -9.6, 6.5), (1.0, 0.3, 2.7)),
 ]
 for f, cl, tl in shots:
     cam.location = cl; cam.keyframe_insert("location", frame=f)
