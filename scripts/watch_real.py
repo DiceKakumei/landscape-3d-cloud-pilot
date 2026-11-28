@@ -10,7 +10,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(sys.argv[sys.argv.index("--py
 from props_lib import *
 
 F0, F1, OUT, SAMPLES = args()
-FEND = 192
+FEND = 240
 FPS = 24
 S = reset()
 WS = os.environ.get("GITHUB_WORKSPACE", os.getcwd())
@@ -319,39 +319,43 @@ for x in (-0.9, -0.3, 0.3, 0.9):  # 蝶番の節
     cyl(0.12, 0.28, (x, -R - 0.02, 0.5 if x in (-0.9, 0.9) else -0.5), GOLD, W, axis="X", v=24)
 
 # ---------- ムーブメント(裏側) ----------
+# 手本: ETA 6498-2 技術資料の分解図(リサーチ/2026-11-28_懐中時計_3D資料_ETA6498分解図.md)
+#  地板の上に、香箱受け(香箱+2番車を覆う大きな受け。上に角穴車・丸穴車・コハゼ)、
+#  輪列受け(3番・4番・ガンギの3石)、アンクル受け、テンプ受け(緩急針・耐震装置)が重なる。
 MV = empty("movement", (0, 0, 0.42), W)  # 胴の中へ
 PAR[0] = MV
 annulus("mov_ring", 1.84, 2.25, 0.05, GOLD_IN, W, -0.1)  # 胴とムーブメントの間
 cyl(1.83, 0.06, (0, 0, -0.52), PLATE, MV, v=128)  # 地板
 torus(1.86, 0.035, (0, 0, -0.52), POLISH, MV, seg=128)
 
-# 配置(Unitas 6498型、竜頭12時)。歯車の中心距離はかみ合いから計算
+# 配置(文字盤側から見た座標、竜頭12時)。歯車の中心距離はかみ合いから計算
 def rr(t, m): return m * t / 2
 C = (0.0, 0.0); F = SUB
 mC, mT, mF, mE, mB = 0.013, 0.012, 0.0085, 0.0085, 0.017
 dCT, dTF = rr(80, mC) + rr(10, mC), rr(75, mT) + rr(10, mT)
 dd = math.dist(C, F); aa = (dCT ** 2 - dTF ** 2 + dd ** 2) / (2 * dd); hh = math.sqrt(max(0, dCT ** 2 - aa ** 2))
-T = (C[0] + aa * (F[0] - C[0]) / dd + hh, C[1] + aa * (F[1] - C[1]) / dd)  # 右側の交点
+T = (C[0] + aa * (F[0] - C[0]) / dd + hh, C[1] + aa * (F[1] - C[1]) / dd)
 assert abs(math.dist(T, C) - dCT) < 1e-6 and abs(math.dist(T, F) - dTF) < 1e-6
 dFE = rr(80, mF) + rr(8, mE)
-E = (F[0] + dFE * math.cos(math.radians(160)), F[1] + dFE * math.sin(math.radians(160)))
-u = (math.cos(math.radians(140)), math.sin(math.radians(140)))
+E = (F[0] + dFE * math.cos(math.radians(20)), F[1] + dFE * math.sin(math.radians(20)))
+u = (math.cos(math.radians(40)), math.sin(math.radians(40)))
 P = (E[0] + 0.30 * u[0], E[1] + 0.30 * u[1])  # アンクル真
 B = (E[0] + 0.78 * u[0], E[1] + 0.78 * u[1])  # テンプ真
 dBC = rr(80, mB) + rr(12, mB)
-A = (dBC * math.cos(math.radians(70)), dBC * math.sin(math.radians(70)))  # 香箱
-K = (A[0] + 0.825 * math.cos(math.radians(120)), A[1] + 0.825 * math.sin(math.radians(120)))  # 丸穴車
+A = (dBC * math.cos(math.radians(110)), dBC * math.sin(math.radians(110)))  # 香箱
+K = (A[0] + 0.825 * math.cos(math.radians(60)), A[1] + 0.825 * math.sin(math.radians(60)))  # 丸穴車
 for p in (A, B, K, T, E, P):
     assert math.hypot(*p) < 1.8, p
+BAL_R = 0.55
 
-tr = Train("E")  # 回転角はローカルZ回り(Trainのyz=ここではxy)
+tr = Train("E")
 def W_(name, c, z, teeth, r, **kw):
-    e = wheel(name, c, z, teeth, r, **kw); tr.add(name, e, teeth, c); return e
+    e = wheel(name, c, z, teeth, r, spokes=5, **kw); tr.add(name, e, teeth, c); return e
 
-# 香箱(ゼンマイの入った太鼓)。歯は上側
-barrel = empty("barrel", (*A, -0.66), MV)
+barrel = empty("barrel", (*A, -0.66), MV)  # 香箱(ゼンマイの太鼓)
 cyl(rr(80, mB) * 0.93, 0.14, (0, 0, 0), GILT, barrel, v=96)
 toothed("barrel_teeth", 80, rr(80, mB), 0.03, GILT, inner=rr(80, mB) * 0.9, z=-0.055, parent=barrel)
+cyl(0.12, 0.2, (0, 0, -0.05), STEEL, barrel, v=24)  # 香箱真
 tr.add("A", barrel, 80, A)
 W_("C", C, -0.6, 80, rr(80, mC), pinion=(12, rr(12, mB)), pin_z=-0.715, arbor=(-0.55, -0.79))
 tr.add("Cp", tr.g["C"][0], 12, C)
@@ -366,13 +370,14 @@ for k in range(5):
     box(0.2, 0.025, 0.016, (0.1 * math.cos(a), 0.1 * math.sin(a), 0), STEEL, esc, bevel=0, rot=(0, 0, a))
 toothed("escape_pinion", 8, rr(8, mE), 0.04, STEEL, z=0.04, parent=esc)
 cyl(0.018, 0.24, (0, 0, -0.02), STEEL, esc, v=12)
-tr.add("E", esc, 8, E); tr.add("Ew", esc, 15, E)
+tr.add("E", esc, 8, E)
 tr.mesh("E", "F"); tr.same_axis("F", "Fp"); tr.mesh("Fp", "T"); tr.same_axis("T", "Tp")
 tr.mesh("Tp", "C"); tr.same_axis("C", "Cp"); tr.mesh("Cp", "A")
 
-# アンクル(アンクル真Pから、テンプ側にフォーク、ガンギ側に2つの爪石)
+# アンクル(分解時は少し浮く)
+G_pf = empty("G_pallet_fork", (0, 0, 0), MV)
 ang_PB = math.atan2(B[1] - P[1], B[0] - P[0])
-pallet = empty("pallet", (*P, -0.735), MV, rot=(0, 0, ang_PB - PI / 2))
+pallet = empty("pallet", (*P, -0.735), G_pf, rot=(0, 0, ang_PB - PI / 2))
 L_fork = math.dist(P, B) - 0.13
 poly("fork", [(-0.025, 0), (0.025, 0), (0.025, L_fork - 0.06), (0.06, L_fork), (0.035, L_fork + 0.02), (0.012, L_fork - 0.03),
               (-0.012, L_fork - 0.03), (-0.035, L_fork + 0.02), (-0.06, L_fork), (-0.025, L_fork - 0.06)], 0.018, STEEL, pallet)
@@ -385,15 +390,90 @@ cyl(0.014, 0.2, (0, 0, -0.02), STEEL, pallet, v=12)
 for sx in (-0.07, 0.07):  # ドテピン(振れ止め)
     cyl(0.012, 0.2, (P[0] + 0.32 * math.cos(ang_PB) + sx * math.cos(ang_PB + PI / 2), P[1] + 0.32 * math.sin(ang_PB) + sx * math.sin(ang_PB + PI / 2), -0.65), STEEL, MV, v=8)
 
-# テンプ(ネジ付きの輪、3本アーム、振り座と振り石)
-bal = empty("balance", (*B, -0.79), MV)
-toothed("bal_rim", 72, 0.6, 0.04, GOLD, inner=0.55, parent=bal)  # 細かい凹凸の無い輪(歯数=滑らかさ)
+# ---------- 受け(コート・ド・ジュネーブ、面取りは磨き) ----------
+ZB, TB = -0.79, 0.05
+def arc(r, a0, a1, n=24):
+    return [(r * math.cos(math.radians(a0 + (a1 - a0) * i / n)), r * math.sin(math.radians(a0 + (a1 - a0) * i / n))) for i in range(n + 1)]
+def engrave(s, size, c, rot, parent):
+    t = txt(s, size, (c[0], c[1], ZB - TB / 2 - 0.004), 0, GOLD, font=None, parent=parent)
+    t.rotation_euler = (0, PI, rot)  # 裏から読める向き
+    return t
+
+# 香箱受け: 香箱と2番車を覆う大きな受け(分解図18番)
+G_bb = empty("G_barrel_bridge", (0, 0, 0), MV); PAR[0] = G_bb
+BB = arc(1.78, 95, 215) + [(-0.55, -0.55), (0.28, -0.12), (0.35, 0.55), (0.55, 1.2), (0.35, 1.72)]
+plate_shape("barrel_bridge", [BB], ZB, TB, BRIDGE)
+for p in ((-1.25, 0.95), (0.42, 1.55), (-0.35, -0.42)):
+    screw(p, ZB - TB / 2 - 0.012, r=0.07, ang=hash(p) % 7)
+jewel(C, ZB - TB / 2 - 0.012, r=0.065, screws=False)
+engrave("SWISS", 0.11, (-0.95, 0.35), 0.4, G_bb)
+engrave("SEVENTEEN  17  JEWELS", 0.075, (-0.85, -0.35), 0.55, G_bb)
+ZR = ZB - TB - 0.02
+ratchet = empty("ratchet", (*A, ZR), G_bb)  # 角穴車
+toothed("ratchet_t", 48, 0.55, 0.04, SUNRAY, parent=ratchet)
+sphere(0.11, (0, 0, -0.02), BLUE, ratchet, scale=(1, 1, 0.4))
+box(0.22, 0.03, 0.02, (0, 0, -0.06), SLOT, ratchet, bevel=0)
+crownw = empty("crown_wheel", (*K, ZR), G_bb)  # 丸穴車(リングの上)
+cyl(0.1, 0.03, (0, 0, 0.03), STEEL, crownw, v=24)
+toothed("crown_t", 24, 0.27, 0.04, SUNRAY, parent=crownw)
+sphere(0.08, (0, 0, -0.02), BLUE, crownw, scale=(1, 1, 0.4))
+for a in (0, 2 * PI / 3, 4 * PI / 3):  # 丸穴車ネジは3本溝(左ネジ)
+    box(0.07, 0.012, 0.02, (0.035 * math.cos(a), 0.035 * math.sin(a), -0.045), SLOT, crownw, bevel=0, rot=(0, 0, a))
+CA = math.radians(165)  # コハゼ(角穴車の逆転止め)
+click_p = (A[0] + 0.72 * math.cos(CA), A[1] + 0.72 * math.sin(CA))
+click = empty("click", (*click_p, ZR), G_bb, rot=(0, 0, CA + PI / 2 + 0.25))
+poly("click_m", [(0, -0.05), (0.05, 0), (0.0, 0.05), (-0.28, 0.02), (-0.33, -0.03), (-0.26, -0.03)], 0.03, STEEL, click)
+screw(click_p, ZR - 0.03, r=0.05)
+cs0 = (click_p[0] - 0.05, click_p[1] - 0.2)
+poly("click_spring", [(cs0[0] + 0.25 * math.cos(a), cs0[1] + 0.25 * math.sin(a)) for a in [PI * (0.6 + 0.5 * i / 12) for i in range(13)]] +
+     [(cs0[0] + 0.22 * math.cos(a), cs0[1] + 0.22 * math.sin(a)) for a in [PI * (1.1 - 0.5 * i / 12) for i in range(13)]], 0.02, STEEL, G_bb, loc=(0, 0, ZR))
+
+# 輪列受け: 3番・4番・ガンギの3石(分解図16番)
+G_tb = empty("G_train_bridge", (0, 0, 0), MV); PAR[0] = G_tb
+TBp = [(-0.5, -0.62)] + arc(1.72, 235, 292) + [(0.55, -1.05), (0.42, -0.75), (0.3, -0.42)]
+plate_shape("train_bridge", [TBp], ZB, TB, BRIDGE)
+for p in (T, F, E):
+    jewel(p, ZB - TB / 2 - 0.012, r=0.065, screws=True)
+for p in ((-0.7, -1.2), (0.2, -1.5)):
+    screw(p, ZB - TB / 2 - 0.012, r=0.07, ang=hash(p) % 7)
+
+# アンクル受け(分解図26番)
+G_pb = empty("G_pallet_bridge", (0, 0, 0), MV); PAR[0] = G_pb
+pfoot = (0.95, -1.3)
+plate_shape("pallet_bridge", [capsule(pfoot, P, 0.2), disc_pts(P, 0.11), disc_pts(pfoot, 0.15)], -0.752, 0.012, BRIDGE)
+jewel(P, -0.758 - 0.012, r=0.055, screws=False)
+screw(pfoot, -0.77, r=0.06)
+
+# テンプ受けとテンプ(分解図27・28番)。テンプは受けと一緒に持ち上がる
+G_bc = empty("G_balance", (0, 0, 0), MV); PAR[0] = G_bc
+foot = (1.45, 0.55)
+plate_shape("balance_cock", [disc_pts(foot, 0.32, 40), capsule(foot, B, 0.32), disc_pts(B, 0.24, 48)], -0.9, 0.05, BRIDGE)
+cyl(0.3, 0.37, (*foot, -0.69), BRIDGE, G_bc, v=40)  # 足
+screw(foot, -0.935, r=0.08)
+# 耐震装置(インカブロック): 金の受け石枠+竪琴形のバネ
+cyl(0.09, 0.02, (*B, -0.935), GOLD, G_bc, v=32)
+sphere(0.035, (*B, -0.945), RUBY, G_bc, scale=(1, 1, 0.4))
+lyre = empty("lyre", (*B, -0.948), G_bc)
+torus(0.07, 0.006, (0, 0, 0), STEEL, lyre, seg=32)
+for a in (0.0, 2.1, 4.2):
+    box(0.05, 0.012, 0.006, (0.085 * math.cos(a), 0.085 * math.sin(a), 0), STEEL, lyre, bevel=0, rot=(0, 0, a))
+# 緩急針(ラケット)と目盛
+reg_a = math.atan2(foot[1] - B[1], foot[0] - B[0]) - 0.35
+reg = empty("regulator", (*B, -0.93), G_bc, rot=(0, 0, reg_a))
+poly("reg_arm", [(0, -0.03), (0.75, -0.012), (0.8, 0), (0.75, 0.012), (0, 0.03)], 0.012, STEEL, reg)
+cyl(0.11, 0.012, (0, 0, 0), STEEL, reg, v=32)
+for s_, da in (("+", 0.15), ("-", -0.15)):
+    a = reg_a + da
+    t = txt(s_, 0.12, (B[0] + 0.85 * math.cos(a), B[1] + 0.85 * math.sin(a), -0.929), 0, INK, font=None, parent=G_bc); t.rotation_euler = (0, PI, 0)
+
+bal = empty("balance", (*B, -0.79), G_bc)
+toothed("bal_rim", 96, BAL_R, 0.04, GOLD, inner=BAL_R - 0.05, parent=bal)
 for k in range(3):
     a = 2 * PI * k / 3
-    box(0.56, 0.05, 0.03, (0.28 * math.cos(a), 0.28 * math.sin(a), 0), GOLD, bal, bevel=0, rot=(0, 0, a))
+    box(BAL_R - 0.02, 0.05, 0.03, ((BAL_R - 0.02) / 2 * math.cos(a), (BAL_R - 0.02) / 2 * math.sin(a), 0), GOLD, bal, bevel=0, rot=(0, 0, a))
 for k in range(18):  # チラネジ
     a = 2 * PI * k / 18 + 0.1
-    e2 = empty("bs", (0.62 * math.cos(a), 0.62 * math.sin(a), 0), bal, rot=(0, 0, a))
+    e2 = empty("bs", ((BAL_R + 0.02) * math.cos(a), (BAL_R + 0.02) * math.sin(a), 0), bal, rot=(0, 0, a))
     cyl(0.028, 0.06, (0.015, 0, 0), GOLD, e2, axis="X", v=12)
     box(0.004, 0.05, 0.012, (0.046, 0, 0), SLOT, e2, bevel=0)
 cyl(0.05, 0.05, (0, 0, 0), STEEL, bal, v=16)
@@ -402,7 +482,7 @@ roller_phase = math.atan2(P[1] - B[1], P[0] - B[0])
 cyl(0.11, 0.018, (0, 0, 0.055), STEEL, bal, v=32)  # 振り座
 cyl(0.012, 0.05, (0.085 * math.cos(roller_phase), 0.085 * math.sin(roller_phase), 0.07), RUBY, bal, v=10)  # 振り石
 
-# ヒゲゼンマイ: 内端は天真と回り、外端は固定。シェイプキーでコイルが詰まる/開く
+# ヒゲゼンマイ: 内端は天真と回り、外端はヒゲ持ちで固定。シェイプキーでコイルが詰まる/開く
 HS_A = math.radians(270)
 cv = bpy.data.curves.new("hairspring", "CURVE"); cv.dimensions = "3D"; cv.bevel_depth = 0.0035; cv.bevel_resolution = 2
 sp = cv.splines.new("POLY"); NH = 420; TURNS = 13; R0, R1 = 0.07, 0.38
@@ -414,65 +494,28 @@ def hs_pt(i, phi):
     return (rad * math.cos(a + phi * k + roller_phase), rad * math.sin(a + phi * k + roller_phase), 0, 1)
 for i in range(NH): sp.points[i].co = hs_pt(i, 0)
 hair = bpy.data.objects.new("hairspring", cv); S.collection.objects.link(hair)
-hair.parent = MV; hair.location = (*B, -0.83); hair.data.materials.append(BLUE)
+hair.parent = G_bc; hair.location = (*B, -0.83); hair.data.materials.append(BLUE)
 hair.shape_key_add(name="Basis")
 kp = hair.shape_key_add(name="wind"); kp.slider_min = -1.0; kp.slider_max = 1.0
 for i in range(NH): kp.data[i].co = hs_pt(i, HS_A)[:3]
-cyl(0.035, 0.04, (*B, -0.83), STEEL, MV, v=16)  # コレット
+cyl(0.035, 0.04, (*B, -0.83), STEEL, G_bc, v=16)  # コレット
 end = hs_pt(NH - 1, 0)
-cyl(0.03, 0.08, (B[0] + end[0], B[1] + end[1], -0.86), STEEL, MV, v=12)  # ヒゲ持ち
-
-# ---------- 受け(仕上げ: コート・ド・ジュネーブ、面取りは磨き) ----------
-ZB, TB = -0.79, 0.05  # 受けの位置・厚み
-# 香箱受け
-plate_shape("barrel_bridge", [disc_pts(A, 0.78, 64), capsule(A, (1.25, 1.15), 0.55), capsule(A, (-0.6, 1.45), 0.45),
-                              capsule(A, (1.45, 0.15), 0.45)], ZB, TB, BRIDGE)
-# 輪列受け(抜き: 腕だけ)
-plate_shape("train_bridge", [capsule((1.35, -0.8), T, 0.3), capsule(T, C, 0.26), capsule(T, F, 0.26), capsule(F, (0.75, -1.5), 0.26),
-                             disc_pts(C, 0.17), disc_pts(T, 0.15), disc_pts(F, 0.15), capsule(C, (-0.55, 0.35), 0.24)], ZB, TB, BRIDGE)
-plate_shape("escape_bridge", [capsule((0.05, -1.62), E, 0.22), disc_pts(E, 0.12)], ZB + 0.01, TB, BRIDGE)
-plate_shape("pallet_bridge", [capsule((-0.85, -1.4), P, 0.2), disc_pts(P, 0.11)], -0.752, 0.012, BRIDGE)
-# テンプ受け(一段高い)
-foot = (-1.45, 0.25)
-plate_shape("balance_cock", [disc_pts(foot, 0.32, 40), capsule(foot, B, 0.3), disc_pts(B, 0.22, 48)], -0.9, 0.05, BRIDGE)
-cyl(0.3, 0.37, (*foot, -0.69), BRIDGE, MV, v=40)  # 足
-for p, z in ((C, ZB - TB / 2), (T, ZB - TB / 2), (F, ZB - TB / 2), (E, ZB + 0.01 - TB / 2), (P, -0.758), (B, -0.925), (A, ZB - TB / 2)):
-    if p is A: continue
-    jewel(p, z - 0.012, r=0.065 if p is not B else 0.08, screws=p in (C, T, F, B))
-# 緩急針(テンプ受けの上): 真で回る針と目盛 + -
-reg = empty("regulator", (*B, -0.94), MV, rot=(0, 0, math.atan2(foot[1] - B[1], foot[0] - B[0]) + 0.35))
-poly("reg_arm", [(0, -0.03), (0.75, -0.012), (0.8, 0), (0.75, 0.012), (0, 0.03)], 0.012, STEEL, reg)
-cyl(0.06, 0.015, (0, 0, 0), STEEL, reg, v=24)
-txt("A", 0.09, (foot[0] + 0.25, foot[1] - 0.25, -0.952), 0, INK, font=None).rotation_euler = (0, PI, 0)
-txt("R", 0.09, (foot[0] - 0.1, foot[1] - 0.3, -0.952), 0, INK, font=None).rotation_euler = (0, PI, 0)
-for p in [(1.25, 1.15), (-0.6, 1.45), (1.45, 0.15), (1.35, -0.8), (0.75, -1.5), (-0.55, 0.35), (0.05, -1.62), (-0.85, -1.4), foot]:
-    screw(p, ZB - TB - 0.01 if p != foot else -0.93, r=0.07, ang=hash(p) % 7)
-
-# 角穴車・丸穴車(香箱受けの上、渦巻き仕上げ)とコハゼ
-ZR = ZB - TB - 0.02
-ratchet = empty("ratchet", (*A, ZR), MV)
-toothed("ratchet_t", 48, 0.55, 0.04, SUNRAY, parent=ratchet)
-sphere(0.11, (0, 0, -0.02), BLUE, ratchet, scale=(1, 1, 0.4))
-box(0.22, 0.03, 0.02, (0, 0, -0.06), SLOT, ratchet, bevel=0)
-crownw = empty("crown_wheel", (*K, ZR), MV)
-toothed("crown_t", 24, 0.27, 0.04, SUNRAY, parent=crownw)
-sphere(0.08, (0, 0, -0.02), BLUE, crownw, scale=(1, 1, 0.4))
-for a in (0, 2 * PI / 3, 4 * PI / 3):  # 丸穴車ネジは3本溝(左ネジ)
-    box(0.07, 0.012, 0.02, (0.035 * math.cos(a), 0.035 * math.sin(a), -0.045), SLOT, crownw, bevel=0, rot=(0, 0, a))
-CA = math.radians(25)  # コハゼの位置(角穴車中心から見た角度)
-click_p = (A[0] + 0.72 * math.cos(CA), A[1] + 0.72 * math.sin(CA))
-click = empty("click", (*click_p, ZR), MV, rot=(0, 0, CA + PI / 2 + 0.25))
-poly("click_m", [(0, -0.05), (0.05, 0), (0.0, 0.05), (-0.28, 0.02), (-0.33, -0.03), (-0.26, -0.03)], 0.03, STEEL, click)
-screw(click_p, ZR - 0.03, r=0.05)
-poly("click_spring", capsule((click_p[0] + 0.1, click_p[1] - 0.18), (click_p[0] - 0.12, click_p[1] - 0.45), 0.025), 0.02, STEEL, MV, loc=(0, 0, ZR))
+cyl(0.03, 0.08, (B[0] + end[0], B[1] + end[1], -0.86), STEEL, G_bc, v=12)  # ヒゲ持ち
+PAR[0] = MV
 
 # ---------- 動き ----------
 BPS = 5.0  # 振動/秒(18,000/時)
-def t_of(f): return (f - 1) / FPS
-def bal_angle(f): return HS_A * math.sin(2 * PI * (BPS / 2) * t_of(f))
+F_FAST0, F_FAST1, FAST = 150, 178, 15.0  # 分解したあと15倍速にして輪列の回転を見せる
+speed = [1.0] * (FEND + 2)
+for f in range(1, FEND + 2):
+    speed[f] = 1.0 + (FAST - 1.0) * seg(f, F_FAST0, F_FAST1)
+TAU = [0.0] * (FEND + 2)
+for f in range(2, FEND + 2):
+    TAU[f] = TAU[f - 1] + speed[f] / FPS  # 時計の中の経過時間(秒)
+def bal_angle(f): return HS_A * math.sin(2 * PI * (BPS / 2) * (f - 1) / FPS)  # テンプは実時間(早回しすると縞模様に見えるため)
 def esc_angle(f):
     """振り石がアンクルを通る(テンプ角0付近)たびに、ガンギ車が12°(半歯)進む"""
-    x = t_of(f) * BPS; k = math.floor(x + 0.5); fr = x + 0.5 - k
+    x = TAU[f] * BPS; k = math.floor(x + 0.5); fr = x + 0.5 - k
     return math.radians(12) * (k + min(1.0, max(0.0, (fr - 0.5) / 0.08 + 0.5)))
 def pallet_angle(f):
     b = bal_angle(f); return math.radians(8) * max(-1.0, min(1.0, b / math.radians(30)))
@@ -484,21 +527,14 @@ def spring(f, f0, amp):
 def front_angle(f): return spring(f, 18, math.radians(100))
 def back_angle(f): return spring(f, 100, -math.radians(105))
 def cuv_angle(f): return -math.radians(95) * seg(f, 116, 136)
-def crown_spin(f):  # 巻き上げ: 前後に回す(往路で巻け、復路は空転)
-    w = 0.0
-    for c0 in (146, 160, 174):
-        w += 2.2 * seg(f, c0, c0 + 8) - 2.2 * seg(f, c0 + 8, c0 + 14)
-    return w
-def wind_amount(f):  # 巻けた量(往路だけ積算)
-    return sum(2.2 * seg(f, c0, c0 + 8) for c0 in (146, 160, 174))
+LIFTS = [(G_tb, 150, 174, -0.55), (G_pf, 152, 176, -0.3), (G_pb, 154, 178, -0.8), (G_bb, 156, 180, -1.05), (G_bc, 158, 184, -1.45)]
 
 T0 = (10 * 3600 + 9 * 60 + 20)
-KW = 2 * PI / 48
 for f in range(1, FEND + 1):
     th = esc_angle(f)
     for n in ("A", "C", "T", "F", "E"):
         o = tr.g[n][0]; o.rotation_euler.z = tr.angle(n, th); key_rot(o, f, 2)
-    sec = T0 + t_of(f)
+    sec = T0 + TAU[f]
     H_SEC.rotation_euler.z = (tr.angle("F", th) - tr.angle("F", 0)) - 2 * PI * (T0 % 60) / 60; key_rot(H_SEC, f, 2)
     H_MIN.rotation_euler.z = -2 * PI * (sec % 3600) / 3600; key_rot(H_MIN, f, 2)
     H_HOUR.rotation_euler.z = -2 * PI * (sec % 43200) / 43200; key_rot(H_HOUR, f, 2)
@@ -507,17 +543,17 @@ for f in range(1, FEND + 1):
     kp.value = b / HS_A; kp.keyframe_insert("value", frame=f)
     pallet.rotation_euler.z = ang_PB - PI / 2 + pallet_angle(f); key_rot(pallet, f, 2)
     crown.location.y = R + 0.58 + crown_press(f); crown.keyframe_insert("location", index=1, frame=f)
-    cs = crown_spin(f)
-    crn.rotation_euler.y = cs; key_rot(crn, f, 1)
-    wa = wind_amount(f)
-    crownw.rotation_euler.z = -wa * 16 / 24; key_rot(crownw, f, 2)  # 巻真の小鉄車16→丸穴車24
-    ra = wa * 16 / 24 * 24 / 48
-    ratchet.rotation_euler.z = ra; key_rot(ratchet, f, 2)
-    ph = (ra / KW) % 1.0  # コハゼ: 歯を1枚ずつ乗り越えて落ちる
-    click.rotation_euler.z = CA + PI / 2 + 0.25 + 0.18 * ph * (1 if wa > 0 else 0); key_rot(click, f, 2)
     front.rotation_euler.x = front_angle(f); key_rot(front, f, 0)
     back.rotation_euler.x = back_angle(f); key_rot(back, f, 0)
     cuv.rotation_euler.x = cuv_angle(f); key_rot(cuv, f, 0)
+    for g, a0, a1, dz in LIFTS:
+        g.location.z = dz * seg(f, a0, a1); g.keyframe_insert("location", index=2, frame=f)
+
+# 自己チェック: 分解後は2番・3番・4番車が見て分かるほど回る
+d4 = abs(tr.angle("F", esc_angle(FEND)) - tr.angle("F", esc_angle(F_FAST1)))
+d3 = abs(tr.angle("T", esc_angle(FEND)) - tr.angle("T", esc_angle(F_FAST1)))
+assert d4 > math.radians(180) and d3 > math.radians(20), (math.degrees(d4), math.degrees(d3))
+print("4番車", round(math.degrees(d4)), "deg / 3番車", round(math.degrees(d3)), "deg (分解後)")
 
 # ---------- カメラ・光 ----------
 WC = (0, 0, 3.4)
@@ -528,12 +564,15 @@ cam = camera([
     (80, (0.4, -7.0, 2.9), (0.0, -0.5, 2.8)),
     (100, (9.5, -1.0, 5.0), (0, 0, 3.5)),
     (124, (3.5, 9.5, 4.8), (0, 0, 3.4)),
-    (146, (0.9, 6.6, 4.4), (0.2, 0.3, 3.9)),
-    (170, (-0.3, 5.3, 3.4), (-0.6, 0.3, 3.1)),
-    (192, (-0.6, 4.6, 3.0), (-0.9, 0.35, 2.98)),
+    (140, (-0.6, 6.4, 3.6), (-0.3, 0.4, 3.1)),
+    (150, (-0.7, 6.1, 3.5), (-0.4, 0.4, 3.0)),
+    (186, (7.0, 9.5, 7.0), (0, 1.1, 3.3)),
+    (240, (-5.5, 9.8, 6.0), (0, 1.1, 3.3)),
 ], lens=60)
-cd = cam.data; cd.dof.use_dof = True; cd.dof.aperture_fstop = 1.4
+cd = cam.data; cd.dof.use_dof = True
 cd.dof.focus_object = next(o for o in S.objects if o.name.startswith("cam_target"))
+for f, fs in ((1, 1.4), (150, 1.4), (180, 6.0), (240, 6.0)):
+    cd.dof.aperture_fstop = fs; cd.dof.keyframe_insert("aperture_fstop", frame=f)
 
 hdr = os.path.join(WS, "assets", "studio.hdr")
 w = bpy.data.worlds.new("w"); S.world = w; w.use_nodes = True; nt = w.node_tree
