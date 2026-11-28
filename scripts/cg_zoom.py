@@ -1,7 +1,7 @@
-# 寄り続けるCGアニメ（水中 → 夜の街と宇宙 → お菓子 → 水中…の縦型ループ、Blender 5.0 headless / Cycles CPU）
+# 寄り続けるCGアニメ（海の貝の真珠 → 夜の街の洋菓子店の窓 → お菓子のテーブルの苺の水滴 → 海…の縦型ループ）
 # blender --background --python scripts/cg_zoom.py -- <出力dir> <フレーム "0,60" or "0-23"> [横px=720] [samples=24]
-# 仕組み：各世界の一点に「泡（ポータル）」があり、中に次の世界が入っている。寄りは3Dを毎回描き直す
-#   （焦点距離とシフトで画面の一部だけを実解像度で描画）ので、拡大してもぼけない。泡の縁と光のにじみはnumpyで合成。
+# 仕組み：次の世界は、今の世界にある物（真珠・店の窓・水滴）の中に映る。寄りは3Dを毎回描き直す
+#   （焦点距離とシフトで画面の一部だけを実解像度で描画）ので拡大してもぼけない。重ね合わせはnumpy。
 import math
 import os
 import random
@@ -26,11 +26,17 @@ SAMPLES = int(argv[3]) if len(argv) > 3 else 24
 
 FPS = 24
 PER = 120                      # 1世界あたりのフレーム数（5秒）
-R = 0.19                       # 泡の半径（画面の横幅=1）
-S = R / 1.12                   # 泡の中の世界の縮尺。寄り切ると泡が画面の対角(1.02)を覆う
-PORTAL = [(0.05, -0.02), (-0.04, 0.13), (0.0, 0.03)]
+# 次の世界が入る物。pos/大きさは画面の横幅=1の座標（原点は中央、上が+）。seenは引きの状態で中が見える濃さ
+PORTALS = [
+    dict(kind="pearl", pos=(0.0, -0.22), r=0.11, seen=0.10),
+    dict(kind="window", pos=(0.0, -0.29), w=0.21, seen=1.0),
+    dict(kind="drop", pos=(0.075, -0.25), r=0.055, seen=0.08),
+]
+# 次の世界の縮尺。丸は寄り切ると画面の対角(1.02)を覆う。窓は画面と同じ縦横比なので幅そのもの
+for q in PORTALS:
+    q["s"] = q["w"] if q["kind"] == "window" else q["r"] / 1.12
+    assert q["kind"] == "window" or q["r"] / q["s"] > math.hypot(0.5, 8 / 9)
 CAM_D, LENS = 30.0, 108.0      # 距離30で画面の横幅=10
-assert R / S > math.hypot(0.5, 8 / 9)
 
 TAU = math.tau
 rnd = random.Random(7)
@@ -222,17 +228,38 @@ def underwater():
                 p.co = (x + math.sin(TAU * 3 * t + ph + f * 4) * 0.9 * f, y, -6.4 + h * f, 1)
     anim.append(sway)
 
-    # 泡の下の大きな貝
-    shell = mat("f5c3da", 0.25, coat=0.8)
-    for k in range(-5, 6):
-        a_ = k * 0.26
-        tube(sc, shell, [(0.5, -0.2, -5.4), (0.5 + math.sin(a_) * 1.6, 0.4, -5.1 + math.cos(a_) * 0.5),
-                         (0.5 + math.sin(a_) * 2.7, 1.2, -4.9 + math.cos(a_) * 1.5)], 0.36, 1.1)
-    ball(sc, shell, (0.5, -0.5, -5.7), 2.3, scale=(1, 0.8, 0.28))
-    point(sc, (0.5, -2.5, -3.2), "ffe3f1", 90)
+    # 岩の上で開いた貝と真珠
+    def valve(hinge, along, up, length, spread, cup, color):
+        def build(bm):
+            nu, nv = 24, 120
+            rows = []
+            for i in range(nu + 1):
+                u = i / nu
+                row = []
+                for j in range(nv + 1):
+                    a_ = (j / nv - .5) * spread
+                    rib = abs(math.sin(j / nv * math.pi * 13))
+                    L = length * u * (1 + .05 * rib * u)
+                    h = cup * u * u + .22 * rib * u
+                    p = Vector(hinge) + Vector((math.sin(a_) * L, 0, 0)) + Vector(along) * (math.cos(a_ * .75) * L) + Vector(up) * h
+                    row.append(bm.verts.new(p))
+                rows.append(row)
+            for i in range(nu):
+                for j in range(nv):
+                    bm.faces.new((rows[i][j], rows[i][j + 1], rows[i + 1][j + 1], rows[i + 1][j]))
+        ob = add(sc, mesh(f"valve{hinge}{along}", mat(color, .3, coat=.7, sss=.2), build, sharp=60))
+        mod = ob.modifiers.new("thick", "SOLIDIFY")
+        mod.thickness, mod.offset = .14, 0
+
+    valve((0, 1.7, -3.9), Vector((0, -1, .02)).normalized(), (0, 0, 1), 3.5, 2.5, .55, "c98aa6")
+    valve((0, 1.9, -3.8), Vector((0, .35, 1)).normalized(), (0, 1, -.35), 3.8, 2.5, .75, "a9759c")
+    ball(sc, mat("f3ecf4", .14, .05, metal=.35, coat=1), (0, 0, -2.2), 1.1)
+    for x, y, z, r in ((0, .8, -5.5, 1.7), (-2.1, .2, -5.7, 1.3), (2.2, .6, -5.7, 1.35), (-.9, -1.4, -6.0, .9), (1.2, -1.6, -6.1, .85)):
+        ball(sc, mat("35546a", .85), (x, y, z), r, scale=(1.25, 1, .75), rot=(0, 0, x))
+    point(sc, (-1.2, -3.0, -.6), "fff0f6", 110)
 
     for c, belly, n, cx, cy, cz, rx, rz, size, speed in [
-            ("ffb000", "fff1b8", 7, 0, 3, 2.6, 5.2, 1.0, 0.55, 1), ("ff5a36", "ffd6c2", 4, 0.5, -2, -2.7, 4.4, .6, .62, -1),
+            ("ffb000", "fff1b8", 7, 0, 3, 2.6, 5.2, 1.0, 0.55, 1), ("ff5a36", "ffd6c2", 4, 0.5, 4, 0.9, 5.0, .5, .55, -1),
             ("39e0d0", "d9fffb", 9, -1, 9, 5.5, 7.0, 1.4, .5, 2)]:
         for j in range(n):
             g = empty(sc)
@@ -288,55 +315,103 @@ def underwater():
 
 # ---------- 世界2：夜の街と宇宙 ----------
 def night():
-    sc = new_scene("night", "6b3fa0", "050722", 0.75, 1.1, "9fb4ff")
+    sc = new_scene("night", "6b3fa0", "050722", 0.75, 0.9, "9fb4ff")
     anim = []
-    ground(sc, mat("141a35", 0.35), -6.5, 0.0, 0.1)
+    ground(sc, mat("171c38", 0.3), -6.5, 0.0, 0.1)
 
-    wins = [mat(c, 0.5, e) for c, e in (("ffd37a", 3.2), ("7ae8ff", 2.6), ("ff7ac8", 2.4))]
+    wins = [mat(c, 0.5, e) for c, e in (("ffd37a", 2.6), ("ffe9b0", 2.0), ("8fd8ff", 1.6))]
     dark = mat("0c1030", 0.2)
-    for row, y in enumerate((2.0, 8.0, 15.0, 24.0)):
-        x = -19 - row
-        while x < 19 + row:
-            w = rnd.uniform(1.2, 2.3)
-            h = rnd.uniform(1.2, 3.2) + row * 0.75
-            if row == 0 and abs(x) < 2.5:
-                h *= 0.6
-            cx = x + w / 2
-            body = mat(rnd.choice(["1b2352", "2a2a68", "18305c", "33255e"]), 0.4)
-            box(sc, body, (cx, y, -6.5 + h / 2), (round(w, 1), 1.4, round(h, 1)))
-            if rnd.random() < .6:
-                box(sc, body, (cx, y, -6.5 + h + .25), (round(w * .55, 1), 1.0, 0.6))
-                ball(sc, mat("ff4d6d", 0.5, 6), (cx, y, -6.5 + h + .75), .09)
-            m = rnd.choice(wins)
-            nx = int(w / 0.42)
-            for i in range(nx):
-                for k in range(int(h / 0.52)):
-                    pos = (cx + (i - (nx - 1) / 2) * 0.4, y - 0.72, -6.2 + k * 0.5)
-                    box(sc, m if rnd.random() < .5 else dark, pos, (0.2, 0.06, 0.26), bevel=0)
-            x += w + rnd.uniform(0.15, 0.6)
 
-    # 泡を支える塔
-    tm = mat("3a3f85", 0.25, metal=0.6)
-    cyl(sc, tm, (-0.4, 0.8, -4.0), .75, .22, 5.0)
-    for z, r in ((-3.0, .95), (-1.5, .75)):
-        torus(sc, mat("62f2ff", 0.4, 4), (-0.4, 0.8, z), r, .07)
-    torus(sc, tm, (-0.4, 0.8, -0.85), 1.05, .13)
+    def house(cx, y, w, h, color):
+        body = mat(color, .6)
+        box(sc, body, (cx, y, -6.5 + h / 2), (round(w, 2), 1.4, round(h, 2)))
+        def roof(bm):
+            v = [bm.verts.new(p) for dy in (-.8, .8) for p in ((-w / 2 - .18, dy, 0), (w / 2 + .18, dy, 0), (0, dy, w * .42))]
+            for f in ((0, 1, 2), (3, 5, 4), (0, 2, 5, 3), (1, 4, 5, 2), (0, 3, 4, 1)):
+                bm.faces.new([v[k] for k in f])
+        add(sc, mesh(f"roof{w:.2f}", mat("2a1d48", .5), roof), bevel=.05, loc=(cx, y, -6.5 + h))
+        nx = max(1, int(w / .8))
+        for i in range(nx):
+            for k in range(int((h - .6) / 1.0)):
+                pos = (cx + (i - (nx - 1) / 2) * .72, y - .73, -5.7 + k * 1.0)
+                m = rnd.choice(wins) if rnd.random() < .45 else dark
+                box(sc, mat("463a6e", .6), pos, (.48, .05, .66), bevel=.02)
+                box(sc, m, (pos[0], pos[1] - .04, pos[2]), (.36, .04, .54), bevel=0)
+                box(sc, mat("463a6e", .6), (pos[0], pos[1] - .08, pos[2]), (.04, .03, .54), bevel=0)
 
-    # 道路と車の光
+    palette = ["232a5e", "3a2c66", "1d3a62", "47285a"]
+    for row, y in enumerate((9.0, 16.0, 25.0)):
+        x = -22
+        while x < 22:
+            w = rnd.uniform(1.6, 2.8)
+            house(x + w / 2, y, w, rnd.uniform(2.2, 4.4) + row * .9, rnd.choice(palette))
+            x += w + rnd.uniform(.1, .5)
+    for cx, w, h, y in ((-4.9, 2.6, 5.4, 1.6), (4.9, 2.5, 4.7, 1.5), (-8.1, 3.0, 6.6, 2.6), (8.2, 3.1, 6.2, 2.4), (-11.8, 3.2, 5.0, 3.5), (12, 3.2, 5.6, 3.4)):
+        house(cx, y, w, h, rnd.choice(palette))
+
+    # 洋菓子店（中央の大きな窓がお菓子の世界）
+    wall, trim, gold = mat("7a3f5e", .7), mat("f3dcc0", .45), mat("e8b45a", .3, .15, metal=.7)
+    q = PORTALS[1]
+    ww, wz = q["w"] * 10, q["pos"][1] * 10
+    wh = ww * 16 / 9
+    top, bot = wz + wh / 2, wz - wh / 2
+    for sx in (-1, 1):
+        box(sc, wall, (sx * (ww / 2 + .75), .8, -2.7), (1.5, 1.4, 7.6))
+        box(sc, trim, (sx * (ww / 2 + .07), 0, wz), (.14, .3, wh + .28), bevel=.04)
+        box(sc, trim, (sx * (ww / 2 + 1.42), .05, -2.7), (.2, .25, 7.6), bevel=.05)
+        cyl(sc, mat("2f7d52", .8), (sx * 1.75, -.35, -5.55), .26, .26, .5)
+        for k in range(14):
+            ball(sc, mat(rnd.choice(["3a8f5c", "2f7d52", "ff8fab"]), .8), (sx * 1.75 + rnd.uniform(-.28, .28), -.4 + rnd.uniform(-.15, .15), -5.15 + rnd.uniform(-.1, .4)), rnd.uniform(.1, .2))
+        # 壁のランタン
+        box(sc, gold, (sx * 1.75, -.05, -1.7), (.3, .2, .08), bevel=.02)
+        ball(sc, mat("ffcf70", .5, 5), (sx * 1.75, -.1, -2.0), .17, scale=(1, 1, 1.3))
+        point(sc, (sx * 1.75, -.7, -2.0), "ffb45a", 45, .2)
+    box(sc, wall, (0, .8, (1.1 + top) / 2), (ww, 1.4, 1.1 - top))
+    box(sc, wall, (0, .8, (bot - 6.5) / 2), (ww, 1.4, bot + 6.5))
+    box(sc, trim, (0, -.05, top + .08), (ww + .28, .35, .16), bevel=.04)
+    box(sc, trim, (0, -.15, bot - .1), (ww + .6, .55, .2), bevel=.05)
+    for k in range(11):  # ひさし
+        x = (k - 5) * .47
+        m = mat("fff3e2" if k % 2 else "d9486c", .6)
+        box(sc, m, (x, -.45, top + .75), (.47, 1.25, .09), bevel=.01, rot=(math.radians(28), 0, 0))
+        cyl(sc, m, (x, -1.0, top + .42), .235, .235, .07, bevel=.01, rot=(math.pi / 2, 0, 0))
+    box(sc, mat("2b1b3d", .5), (0, 0, 1.75), (4.5, .2, .85), bevel=.08)
+    for z in (1.33, 2.17):
+        box(sc, gold, (0, -.12, z), (4.5, .06, .06), bevel=.02)
+    cu = bpy.data.curves.new("sign", "FONT")
+    cu.body, cu.size, cu.align_x, cu.align_y, cu.extrude = "PÂTISSERIE", .55, "CENTER", "CENTER", .02
+    cu.materials.append(mat("ffd98a", .4, 2.4))
+    link(sc, bpy.data.objects.new("sign", cu), loc=(0, -.17, 1.75), rot=(math.pi / 2, 0, 0))
+    def gable(bm):
+        v = [bm.verts.new(p) for dy in (-.8, .9) for p in ((-3.1, dy, 0), (3.1, dy, 0), (0, dy, 1.7))]
+        for f in ((0, 1, 2), (3, 5, 4), (0, 2, 5, 3), (1, 4, 5, 2), (0, 3, 4, 1)):
+            bm.faces.new([v[k] for k in f])
+    box(sc, wall, (0, .9, 1.7), (5.2, 1.3, 1.3))
+    add(sc, mesh("gable", mat("33224f", .5), gable), bevel=.08, loc=(0, .8, 2.35))
+    ball(sc, mat("ffd98a", .5, 3), (0, -.05, 2.95), .3, scale=(1, .3, 1))
+    point(sc, (0, -1.6, bot + .3), "ffc27a", 130, .6)
+
+    # 手前の道と街灯
+    box(sc, mat("2a2f55", .35), (0, -1.9, -6.48), (60, .25, .12), bevel=.03)
+    for x in (-3.7, 3.8):
+        cyl(sc, mat("11152e", .3, metal=.6), (x, -.8, -4.7), .09, .07, 3.6)
+        ball(sc, mat("ffd58a", .5, 6), (x, -.8, -2.75), .24)
+        cyl(sc, mat("11152e", .3, metal=.6), (x, -.8, -2.45), .34, 0, .28)
+        point(sc, (x, -1.2, -2.9), "ffb860", 70, .25)
     cars = []
-    for lane, (y, c, d) in enumerate(((-3.6, "ff3b5c", 1), (-1.8, "fff2c0", -1))):
-        box(sc, mat("5b6bd6", 0.5, 0.5), (0, y - .75, -6.45), (60, .08, .05), bevel=0)
-        for j in range(9):
-            g = empty(sc)
-            box(sc, mat(rnd.choice(["e8ecff", "ff7aa2", "46c8ff"]), .25, coat=.6), (0, 0, 0), (1.0, .55, .28), parent=g)
-            box(sc, mat("101840", .1), (-.08 * d, 0, .22), (.5, .5, .22), parent=g)
-            ball(sc, mat(c, .5, 8), (-.52 * d, -.2, 0), .11, parent=g)
-            tube(sc, mat(c, .5, 2.2, alpha=.5), [(-.55 * d, -.2, 0), (-2.2 * d, -.2, 0)], .06, 0.05, parent=g)
-            cars.append((g, y, d, j / 9 + rnd.uniform(-.03, .03) + lane * .05))
+    for j in range(3):
+        g = empty(sc)
+        box(sc, mat(["e8ecff", "ff7aa2", "46c8ff"][j], .25, coat=.6), (0, 0, 0), (1.5, .7, .36), bevel=.16, parent=g)
+        box(sc, mat("101840", .1), (-.1, 0, .3), (.75, .62, .3), bevel=.13, parent=g)
+        for sx in (-.48, .48):
+            cyl(sc, mat("07080f", .5), (sx, -.34, -.18), .19, .19, .14, rot=(math.pi / 2, 0, 0), parent=g)
+        ball(sc, mat("fff2c0", .5, 7), (.76, -.2, 0), .09, parent=g)
+        ball(sc, mat("ff3b5c", .5, 5), (-.76, -.2, 0), .09, parent=g)
+        cars.append((g, j / 3 + .05))
 
     def drive(t):
-        for g, y, d, ph in cars:
-            g.location = (((ph + 2 * t) % 1 * 40 - 20) * d, y, -6.2)
+        for g, ph in cars:
+            g.location = ((ph + t) % 1 * 44 - 22, -3.6, -6.1)
     anim.append(drive)
 
     # 星
@@ -381,32 +456,6 @@ def night():
     moonlet = ball(sc, mat("9bffd0", .5, .6), (0, 0, 0), .24, parent=pl)
     anim.append(lambda t: setattr(moonlet, "location", (2.8 * math.cos(TAU * 3 * t), 2.8 * math.sin(TAU * 3 * t), 0)))
 
-    # ロケット：泡の周りを回る
-    rk = empty(sc)
-    cyl(sc, mat("f4f6ff", .25, .08, coat=.8), (0, 0, 0), .34, .34, 1.1, parent=rk)
-    cyl(sc, mat("ff4d6d", .3, .15), (0, 0, .82), .34, 0, .55, parent=rk)
-    for k in range(3):
-        a_ = TAU * k / 3
-        box(sc, mat("ff4d6d", .3, .15), (.38 * math.cos(a_), .38 * math.sin(a_), -.45), (.36, .09, .45), rot=(0, 0, a_), parent=rk)
-    ball(sc, mat("62f2ff", .1, 1.5), (0, -.31, .15), .16, parent=rk)
-    flame = cyl(sc, mat("ffb020", .5, 9), (0, 0, -.95), .24, 0, .85, rot=(math.pi, 0, 0), parent=rk)
-    puffs = [ball(sc, mat("ffd9a0", .8, 1.2, alpha=.45), (0, 0, 0), .1) for _ in range(26)]
-
-    def orbit(q):
-        return Vector((-0.4 + 3.9 * math.cos(q), 1.0 + 3.0 * math.sin(q), 1.5 + 1.9 * math.sin(q + .6)))
-
-    def fly(t):
-        q = TAU * 2 * t + 3.6
-        rk.location = orbit(q)
-        rk.rotation_euler = (orbit(q + .02) - orbit(q)).to_track_quat("Z", "Y").to_euler()
-        flame.scale = (1, 1, 1 + .35 * math.sin(TAU * 60 * t))
-        for i, p in enumerate(puffs):
-            back = orbit(q - .09 - i * .05)
-            p.location = back
-            k = .2 * (1 - i / len(puffs)) + .02
-            p.scale = (k, k, k)
-    anim.append(fly)
-
     # 流れ星
     shoot = tube(sc, mat("dff4ff", .5, 7), [(0, 0, 0), (4.0, 0, 1.7)], .09, 0.02)
 
@@ -414,118 +463,127 @@ def night():
         f = (t * 3 + .15) % 1
         shoot.location = (11 - 24 * f * 2.2, 30, 22 - 10 * f * 2.2)
     anim.append(meteor)
-    point(sc, (0, -4, -3), "ff6fd0", 260, 2)
     return sc, anim
 
 
 # ---------- 世界3：お菓子 ----------
 def sweets():
-    sc = new_scene("sweets", "ffcfe2", "74c8ff", 0.62, 2.2, "fff1dd", (45, -30, 0))
+    sc = new_scene("sweets", "ffe3d0", "ffc9d6", 0.45, 1.9, "fff0dc", (48, -35, 0))
     anim = []
-    ground(sc, mat("ffb3cd", 0.5, sss=.3), -6.5, 0.9, 0.12)
-    cream = mat("fff6ea", 0.4, sss=.4)
-    colors = ["ff5d8f", "ffd23f", "5ad1e8", "9d7bff", "7ee081", "ff9248"]
+    cream = mat("fff4e4", .45, sss=.4)
+    colors = ["ff6f91", "ffd36b", "8fd8c8", "b9a0ff", "ff9a5a"]
+    box(sc, mat("f6e6da", .8, sss=.1), (0, 5, -5.4), (60, 22, 1.0), bevel=.1)          # テーブル(クロス)
+    for k in range(-14, 15):
+        box(sc, mat("f0b9c4", .85), (k * 2.2, 5, -4.895), (.75, 21.5, .012), bevel=0)
+    box(sc, mat("e9b7a8", .9), (0, 17, 4), (70, .5, 30))                                # 奥の壁
+    wood = mat("8a5436", .55)
+    for z in (-1.2, 3.2, 7.4):                                                          # 棚と瓶
+        box(sc, wood, (0, 15.6, z), (40, 2.0, .28))
+        x = -15.0
+        while x < 15:
+            h, r = rnd.uniform(1.1, 2.2), rnd.uniform(.5, .85)
+            c = rnd.choice(colors)
+            for k in range(int(h / .34)):
+                for dx in (-.28, .28):
+                    ball(sc, mat(c, .4), (x + dx * r * 1.4 + rnd.uniform(-.05, .05), 14.9, z + .35 + k * .34), .2 * r * 1.4)
+            cyl(sc, mat("fff8f0", .08, alpha=.22), (x, 15.0, z + .15 + h / 2), r, r, h, bevel=.2)
+            cyl(sc, mat("c98a4b", .35, metal=.6), (x, 15.0, z + .28 + h), r * .8, r * .8, .25)
+            x += r * 2 + rnd.uniform(.25, .8)
+    for k in range(34):                                                                 # つり電球
+        x = -13 + k * .8
+        z = 6.3 - .9 * abs(math.sin(k * math.pi / 11))
+        ball(sc, mat("ffdf9a", .5, 4), (x, 12.5, z), .11)
 
-    def swirl(x, y, z, s):  # ホイップ
-        for k in range(5):
-            torus(sc, cream, (x, y, z + k * .3 * s), (0.62 - k * .12) * s, (.27 - k * .035) * s, rot=(.06 * (k % 2), 0, 0))
-        cyl(sc, cream, (x, y, z + 1.65 * s), .14 * s, 0, .55 * s)
+    def plate(x, y, z, r):
+        cyl(sc, mat("ffffff", .15, coat=1), (x, y, z), r * .85, r, .14, bevel=.05)
+        torus(sc, mat("e8b45a", .25, metal=.8), (x, y, z + .08), r * .94, .035)
 
-    def berry(x, y, z, s):
-        ball(sc, mat("ff2d55", .22, coat=1), (x, y, z), s, scale=(1, 1, 1.15))
-        for k in range(14):
-            a_, h = rnd.uniform(0, TAU), rnd.uniform(-.7, .7)
-            rr = math.sqrt(1 - h * h) * s
-            ball(sc, mat("ffe66d", .4), (x + rr * math.cos(a_), y + rr * math.sin(a_), z + h * s * 1.15), s * .07)
-        for k in range(5):
-            ball(sc, mat("38b24a", .5), (x + .35 * s * math.cos(k * 1.26), y + .35 * s * math.sin(k * 1.26), z + 1.12 * s),
-                 .3 * s, scale=(1, .55, .25), rot=(0, 0, k * 1.26))
+    def berry(c, r, seeds, skip=None):
+        g = empty(sc, loc=c, scale=(r, r, r))
 
-    # ケーキ（泡はこの上）
-    for z, r, h, c in ((-5.55, 3.4, 1.9, "ffe0a8"), (-3.8, 2.5, 1.6, "ff9ebb"), (-2.4, 1.6, 1.2, "fff0c2")):
-        cyl(sc, mat(c, .55, sss=.2), (0, 1.0, z), r, r, h, bevel=.18)
-        cyl(sc, mat("ff5d8f", .2, coat=1), (0, 1.0, z - .1), r + .03, r + .03, .22, bevel=.1)
-        top = z + h / 2
-        torus(sc, cream, (0, 1.0, top), r - .06, .22)
-        for k in range(int(r * 9)):
-            a_ = TAU * k / int(r * 9)
-            drop = rnd.uniform(.15, .65)
-            px, py = (r - .02) * math.cos(a_), 1.0 + (r - .02) * math.sin(a_)
-            tube(sc, cream, [(px, py, top), (px, py, top - drop)], .15, .85)
-            ball(sc, cream, (px, py, top - drop), .15)
-        for k in range(int(r * 3.2)):
-            a_ = TAU * k / int(r * 3.2) + .3
-            berry((r - .4) * math.cos(a_), 1.0 + (r - .4) * math.sin(a_), top + .42, .3)
+        def shape(n):
+            w = .84 + .24 * n.z
+            return Vector((n.x * w, n.y * w, n.z * 1.15))
 
-    for x, y, z, s in ((-4.1, -2.6, -6.1, 1.0), (4.3, -1.5, -6.1, 1.25), (-7.5, 7, -6, 2.0), (8.0, 11, -6, 2.3), (2.7, -5, -6.3, .65)):
-        swirl(x, y, z, s)
+        def build(bm):
+            bmesh.ops.create_icosphere(bm, subdivisions=5, radius=1)
+            for v in bm.verts:
+                v.co = shape(v.co.normalized())
+        add(sc, mesh("berry", mat("e5173f", .24, coat=1, sss=.15), build, sharp=80), parent=g)
+        for k in range(seeds):  # 種（黄金角で均等に）
+            h = .72 - 1.64 * (k + .5) / seeds
+            a_ = k * 2.39996
+            n_ = Vector((math.sqrt(1 - h * h) * math.cos(a_), math.sqrt(1 - h * h) * math.sin(a_), h))
+            p_ = shape(n_)
+            if skip and (Vector(c) + p_ * r - Vector(skip)).length < .75:
+                continue
+            ob = ball(sc, mat("f7d65a", .35), tuple(p_ * 1.005), .042, scale=(1, 1, 1.4), parent=g)
+        for k in range(7):
+            a_ = k * TAU / 7
+            tube(sc, mat("3f9e46", .55), [(0, 0, 1.12), (.3 * math.cos(a_), .3 * math.sin(a_), 1.2),
+                                          (.7 * math.cos(a_), .7 * math.sin(a_), 1.0 + .12 * (k % 2))], .11, .05, parent=g)
+        tube(sc, mat("4f8a34", .6), [(0, 0, 1.12), (.08, 0, 1.45), (.24, 0, 1.62)], .07, .7, parent=g)
 
-    # マカロンの塔
-    for bx, by, n, sz in ((-3.7, -.5, 5, .95), (3.9, 2.2, 6, 1.0), (-8.5, 2, 4, 1.2)):
-        z = -5.9
-        for k in range(n):
-            c = colors[(k + int(bx)) % len(colors)]
-            ox = rnd.uniform(-.14, .14)
-            for dz in (-.2, .2):
-                ball(sc, mat(c, .5, sss=.2), (bx + ox, by, z + dz * sz), sz * .82, scale=(1, 1, .32))
-            cyl(sc, cream, (bx + ox, by, z), sz * .74, sz * .74, sz * .17)
-            z += .62 * sz
+    # 手前の主役の苺（水滴がつく）
+    plate(.5, 1.2, -4.82, 3.0)
+    berry((.75, 1.32, -2.95), 1.58, 170, skip=(.75, 0, -2.5))
+    berry((-1.25, .6, -4.1), .66, 70)
+    for x, y, rz in ((-1.9, -.4, .4), (2.5, .2, -.5)):
+        tube(sc, mat("52a84a", .5), [(x, y, -4.68), (x + .6 * math.cos(rz), y + .6 * math.sin(rz), -4.55),
+                                     (x + 1.1 * math.cos(rz), y + 1.1 * math.sin(rz), -4.66)], .2, .08)
 
-    # ドーナツ（浮いて回る）
-    for x, y, z, s, c, ph in ((-3.2, .5, 3.9, 1.15, "ff5d8f", 0), (3.5, 2, 5.6, 1.3, "6a3d2a", .3), (3.6, -1.5, .4, .75, "5ad1e8", .6),
-                              (-6.5, 12, 7.5, 1.6, "ffd23f", .8), (.5, 18, 11, 1.8, "9d7bff", .15)):
-        g = empty(sc, scale=(s, s, s))
-        torus(sc, mat("e0a15c", .6, sss=.2), (0, 0, 0), 1.0, .46, parent=g)
-        torus(sc, mat(c, .18, coat=1), (0, 0, .13), 1.0, .42, scale=(1.02, 1.02, .92), parent=g)
-        for k in range(48):
-            a_, off = rnd.uniform(0, TAU), rnd.uniform(-.26, .26)
-            rr = 1.02 + off
-            zz = .13 + .39 * math.sqrt(max(0, 1 - (off / .43) ** 2))
-            tube(sc, mat(rnd.choice(colors + ["ffffff"]), .3, .15), [(-.08, 0, 0), (.08, 0, 0)], .032,
-                 loc=(rr * math.cos(a_), rr * math.sin(a_), zz), rot=(0, 0, rnd.uniform(0, 3)), parent=g)
+    # 苺のホールケーキ
+    cx, cy = -3.0, 6.0
+    cyl(sc, mat("ffffff", .15, coat=1), (cx, cy, -4.3), .55, .3, 1.2)
+    plate(cx, cy, -3.65, 3.1)
+    cyl(sc, cream, (cx, cy, -2.35), 2.55, 2.55, 2.45, bevel=.22)
+    for z in (-2.9, -2.0):
+        torus(sc, mat("ff8fa8", .35), (cx, cy, z), 2.54, .09)
+    for k in range(26):
+        a_ = TAU * k / 26
+        px, py = cx + 2.25 * math.cos(a_), cy + 2.25 * math.sin(a_)
+        ball(sc, cream, (px, py, -1.08), .27, scale=(1, 1, .8))
+        tube(sc, cream, [(px, py, -1.0), (px, py, -.72)], .13, .1)
+    for k in range(9):
+        a_ = TAU * k / 9 + .2
+        berry((cx + 1.5 * math.cos(a_), cy + 1.5 * math.sin(a_), -.65), .36, 24)
+    for k, (dx, h) in enumerate(((-.5, 1.3), (.2, 1.6), (.85, 1.15))):
+        cyl(sc, mat(colors[k + 1], .4), (cx + dx, cy, -1.1 + h / 2), .09, .09, h, bevel=.02)
+        flame = ball(sc, mat("ffb030", .5, 8), (cx + dx, cy, -1.1 + h + .22), .12, scale=(1, 1, 1.9))
 
-        def spin(t, g=g, base=(x, y, z), ph=ph):
-            g.location = (base[0], base[1], base[2] + .55 * math.sin(TAU * (3 * t + ph)))
-            g.rotation_euler = (math.radians(62) + .35 * math.sin(TAU * (2 * t + ph)),
-                                .4 * math.cos(TAU * (2 * t + ph)), TAU * (t + ph))
-        anim.append(spin)
+        def flick(t, f=flame, ph=k):
+            v = 1 + .18 * math.sin(TAU * (31 * t + ph * .37))
+            f.scale = (.12, .12, .228 * v)
+        anim.append(flick)
 
-    # ぐるぐるキャンディ
-    for x, y, h, s, sp in ((-5.0, 3, 7.4, 1.5, 3), (5.4, 5, 6.2, 1.35, -3), (-11, 13, 10, 2.2, 2), (11.5, 16, 11, 2.4, -2), (6.4, -.5, 3.2, .85, 2)):
-        tube(sc, mat("ffffff", .3), [(x, y, -6.5), (x, y, -6.5 + h)], .17)
-        g = empty(sc, loc=(x, y, -6.5 + h + s * .8))
-        c1, c2 = rnd.sample(colors, 2)
-        cyl(sc, mat(c1, .15, coat=1), (0, 0, 0), s, s, .45, bevel=.2, rot=(math.pi / 2, 0, 0), parent=g)
-        for arm in range(4):
-            pts = [(s * .93 * f * math.cos(f * 5 + arm * TAU / 4), -.24, s * .93 * f * math.sin(f * 5 + arm * TAU / 4))
-                   for f in (i / 40 for i in range(41))]
-            tube(sc, mat(c2 if arm % 2 else "ffffff", .15, .1, coat=1), pts, .11 * s, parent=g)
-        anim.append(lambda t, g=g, sp=sp: setattr(g, "rotation_euler", (0, TAU * sp * t, 0)))
+    # マカロンの皿とクッキー、カップ
+    plate(3.7, 4.6, -4.82, 2.1)
+    z = -4.55
+    for k, n in enumerate((3, 2, 1)):
+        for j in range(n):
+            x = 3.7 + (j - (n - 1) / 2) * 1.2
+            c = colors[(k * 2 + j) % 5]
+            for dz in (-.19, .19):
+                ball(sc, mat(c, .55, sss=.2), (x, 4.6, z + dz + k * .62), .6, scale=(1, 1, .36))
+            cyl(sc, cream, (x, 4.6, z + k * .62), .52, .52, .16)
+    for x, y, r in ((-4.4, .8, .95), (-3.9, -1.2, .75), (3.8, -.9, .85), (5.6, 1.2, .9)):
+        cyl(sc, mat("d99a52", .8, sss=.2), (x, y, -4.72), r, r * .95, .3, bevel=.12)
+        for k in range(9):
+            a_, d = rnd.uniform(0, TAU), rnd.uniform(0, r * .75)
+            ball(sc, mat("4a2616", .35), (x + d * math.cos(a_), y + d * math.sin(a_), -4.56), rnd.uniform(.07, .13), scale=(1, 1, .6))
+    cup = mat("a8d8d0", .18, coat=1)
+    cyl(sc, cup, (6.0, 8.0, -3.7), .9, 1.25, 2.2, bevel=.2)
+    torus(sc, cup, (7.35, 8.0, -3.6), .6, .18, rot=(math.pi / 2, 0, 0))
+    cyl(sc, mat("8a4b2a", .1), (6.0, 8.0, -2.58), 1.1, 1.1, .05)
+    steam = [tube(sc, mat("ffffff", .9, .6, alpha=.12), [(0, 0, 0)] * 16, .16, .2) for _ in range(3)]
 
-    # キャンディケイン
-    for x, y, s, flip in ((-2.9, -4.6, .75, 1), (4.9, -3.6, 1.0, -1), (-5.8, -1.8, 1.25, 1), (9.5, 4, 1.6, -1)):
-        path = [(0, 0, i * .3) for i in range(11)] + \
-               [(.8 - .8 * math.cos(a_), 0, 3 + .8 * math.sin(a_)) for a_ in (math.pi * i / 12 for i in range(1, 13))]
-        for i in range(len(path) - 1):
-            tube(sc, mat("ff2d55" if i % 2 else "ffffff", .15, coat=1), path[i:i + 2], .24,
-                 loc=(x, y, -6.5), scale=(s * flip, s, s))
-
-    for k in range(34):  # 綿あめの雲
-        cx = [-6.5, 6.8, -2.0, 9.5, -10][k % 5] + rnd.uniform(-1.8, 1.8)
-        cz = [9.5, 10.5, 14.5, 3.5, 3.0][k % 5] + rnd.uniform(-.5, .5)
-        ball(sc, mat(["ffffff", "ffd1ec", "d9f4ff"][k % 3], .9, .22), (cx, 22 + rnd.uniform(-1, 1), cz), rnd.uniform(.7, 1.6))
-
-    flakes = []
-    for _ in range(190):  # 降るチョコスプレー
-        ob = tube(sc, mat(rnd.choice(colors), .3, .3), [(-.13, 0, 0), (.13, 0, 0)], .05)
-        flakes.append((ob, rnd.uniform(-11, 11), rnd.uniform(-3, 18), rnd.random(), rnd.randint(1, 3)))
-
-    def fall(t):
-        for ob, x, y, ph, sp in flakes:
-            z = (ph - sp * t) % 1
-            ob.location = (x + .4 * math.sin(TAU * (2 * z + ph)), y, -7 + 21 * z)
-            ob.rotation_euler = (TAU * (z * 3 + ph), TAU * z * 2, ph * 6)
-    anim.append(fall)
+    def smoke(t):
+        for k, ob in enumerate(steam):
+            for i, p in enumerate(ob.data.splines[0].points):
+                f = i / 15
+                p.co = (6.0 + (k - 1) * .4 + .45 * f * math.sin(TAU * (4 * t + k * .3) - f * 7), 8.0, -2.5 + 3.2 * f, 1)
+    anim.append(smoke)
+    point(sc, (-5, -5, 2), "ffdcb4", 380, 2)
     return sc, anim
 
 
@@ -567,38 +625,59 @@ def smooth(e0, e1, v):
 
 
 def portal(canvas, level, center, scale, depth):
-    """levelの世界(中心center・倍率scale)の中にある泡と、その中の次の世界を重ねる。"""
-    px, py = PORTAL[level % 3]
-    c = (center[0] + px * scale, center[1] + py * scale)
-    r = R * scale
-    rp, cx, cy = r * W, (c[0] + 0.5) * W, c[1] * W + H / 2
-    halo = 1.18
-    x0, y0 = max(0, int(cx - rp * halo)), max(0, int(cy - rp * halo))
-    x1, y1 = min(W, int(cx + rp * halo) + 2), min(H, int(cy + rp * halo) + 2)
-    if depth > 2 or rp < 3 or x1 - x0 < 4 or y1 - y0 < 4:
+    """levelの世界(中心center・倍率scale)にある物の中に、次の世界を映し込む。"""
+    q = PORTALS[level % 3]
+    c = (center[0] + q["pos"][0] * scale, center[1] + q["pos"][1] * scale)
+    window = q["kind"] == "window"
+    size = (q["w"] if window else 2 * q["r"]) * scale          # 画面上の幅
+    hw = size / 2 * W
+    hh = hw * 16 / 9 if window else hw
+    cx, cy = (c[0] + 0.5) * W, c[1] * W + H / 2
+    pad = 1.0 if window else 1.35                              # 水滴は外側に影を落とす
+    x0, y0 = max(0, int(cx - hw * pad)), max(0, int(cy - hh * pad))
+    x1, y1 = min(W, int(math.ceil(cx + hw * pad)) + 1), min(H, int(math.ceil(cy + hh * pad)) + 1)
+    if depth > 2 or hw < 2 or x1 - x0 < 4 or y1 - y0 < 4:
         return
     child = (level + 1) % 3
-    inner = render(WORLDS[child][0], x0, y0, x1, y1, c, scale * S)
+    inner = render(WORLDS[child][0], x0, y0, x1, y1, c, scale * q["s"])
     sub = np.zeros((H, W, 3), np.float32)
     sub[y0:y1, x0:x1] = inner
-    portal(sub, child, c, scale * S, depth + 1)
-    yy, xx = np.mgrid[y0:y1, x0:x1].astype(np.float32)
-    dx, dy = (xx + .5 - cx) / rp, (yy + .5 - cy) / rp
-    d = np.sqrt(dx * dx + dy * dy)
-    mask = np.clip((1 - d) * rp + .5, 0, 1)[..., None]
-    fade = float(1 - smooth(0.3, 0.95, r))  # 寄るほど泡の縁は消える
+    portal(sub, child, c, scale * q["s"], depth + 1)
+    inner = sub[y0:y1, x0:x1]
     area = canvas[y0:y1, x0:x1]
-    glow = (np.exp(-((d - 1) / .06) ** 2) * (d > 1) * .45 * fade)[..., None]
-    area += glow * (np.array([.75, .92, 1.0], np.float32) - area)
-    body = sub[y0:y1, x0:x1].copy()
-    rim = smooth(.72, 1.0, d) * .55 * fade
-    hue = np.arctan2(dy, dx)
-    film = np.stack([.75 + .25 * np.cos(hue + k) for k in (0, 2.1, 4.2)], -1)  # シャボン膜の虹色
-    body += rim[..., None] * (film - body)
-    spec = np.exp(-(((dx + .46) * .8 + (dy - .52) * -.2) ** 2 / .018 + ((dy - .52) ** 2) / .008))
-    spec += .7 * np.exp(-((dx - .5) ** 2 + (dy + .56) ** 2) / .003)
-    body += (np.clip(spec, 0, 1) * .9 * fade)[..., None] * (1 - body)
-    area += mask * (body - area)
+    # 引き(p=0)→寄り切り(p=1)。物の大きさだけで決めるので、世界の切り替わりでも連続する
+    base_size = q["w"] if window else 2 * q["r"]
+    p = float(smooth(0, 1, math.log(max(size / base_size, 1)) / math.log(1 / q["s"]) / .8))
+    yy, xx = np.mgrid[y0:y1, x0:x1].astype(np.float32)
+    dx, dy = (xx + .5 - cx) / hw, (yy + .5 - cy) / hh
+    if window:
+        mask = (np.clip((1 - np.abs(dx)) * hw + .5, 0, 1) * np.clip((1 - np.abs(dy)) * hh + .5, 0, 1))[..., None]
+        shine = np.exp(-((dx + dy * .8 + .5) / .16) ** 2) + .6 * np.exp(-((dx + dy * .8 - .35) / .06) ** 2)
+        inner = inner + (shine * .13 * (1 - p))[..., None] * (1 - inner)       # ガラスの反射
+        area += mask * (inner - area)
+        return
+    d = np.sqrt(dx * dx + dy * dy)
+    mask = np.clip((1 - d) * hw + .5, 0, 1)
+    seen = q["seen"] + (1 - q["seen"]) * float(smooth(.05, .75, p))
+    edge = 1 - smooth(.45, 1.0, d) * (1 - p)                    # 引きでは縁ほど元の物のまま
+    alpha = (mask * seen * edge)[..., None]
+    if q["kind"] == "pearl":
+        luster = np.stack([.5 + .5 * np.cos(d * 4 + dx * 2 + k) for k in (0, 2.1, 4.2)], -1)
+        area += (mask * smooth(.4, 1, d) * .12 * (1 - p))[..., None] * (luster - area)
+        area += alpha * (inner - area)
+        return
+    # 水滴：影 → 下地を拡大 → 中の世界 → 縁と光
+    sd = np.sqrt((dx - .16) ** 2 + (dy + .22) ** 2)
+    area *= 1 - (smooth(1.28, .85, sd) * (1 - mask) * .42 * (1 - p))[..., None]
+    zoomx = np.clip((cx + dx * hw * (.62 + .38 * d * d) - x0).astype(int), 0, x1 - x0 - 1)
+    zoomy = np.clip((cy + dy * hh * (.62 + .38 * d * d) - y0).astype(int), 0, y1 - y0 - 1)
+    lens = area[zoomy, zoomx]
+    area += mask[..., None] * (1 - p) * (lens - area)
+    area += alpha * (inner - area)
+    area *= 1 - (mask * smooth(.62, 1.0, d) * .45 * (1 - p))[..., None]
+    caustic = np.exp(-((dx - .28) ** 2 / .07 + (dy + .5) ** 2 / .03)) * .5
+    spec = np.exp(-((dx + .38) ** 2 + (dy - .45) ** 2) / .012) + .5 * np.exp(-((dx + .58) ** 2 + (dy - .2) ** 2) / .003)
+    area += (mask * np.clip(caustic + spec, 0, 1) * (1 - p))[..., None] * (1 - area)
 
 
 def blur(a, r):
@@ -633,8 +712,9 @@ for f in FRAMES:
             fn(t)
     i, u = (f // PER) % 3, (f % PER) / PER
     u -= 0.6 * math.sin(TAU * u) / TAU  # 世界を見せる所はゆっくり、くぐる所は速く
+    S = PORTALS[i]["s"]
     k = S ** u
-    p = PORTAL[i]
+    p = PORTALS[i]["pos"]
     scale = 1 / k
     center = (-p[0] * (1 - k) / (1 - S) / k, -p[1] * (1 - k) / (1 - S) / k)
     canvas = render(WORLDS[i][0], 0, 0, W, H, center, scale).copy()
