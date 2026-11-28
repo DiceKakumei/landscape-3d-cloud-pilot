@@ -15,7 +15,9 @@ from mathutils import Vector, noise
 
 argv = sys.argv[sys.argv.index("--") + 1:]
 OUT = os.path.abspath(argv[0])
-if "-" in argv[1]:
+if argv[1] == "blend":         # .blendファイルの書き出し
+    FRAMES = None
+elif "-" in argv[1]:
     a, b = map(int, argv[1].split("-"))
     FRAMES = range(a, b + 1)
 else:
@@ -755,12 +757,14 @@ def bloom(img):
     return 1 - (1 - img) * (1 - np.clip(up * 1.5, 0, 1))
 
 
-os.makedirs(OUT, exist_ok=True)
-for f in FRAMES:
-    t = f / TOTAL
+def animate(f):
     for _, anim in WORLDS:
         for fn in anim:
-            fn(t)
+            fn(f / TOTAL)
+
+
+def view(f):
+    """fコマ目に映す世界の番号と、画面上の中心・倍率。"""
     i, start = 0, 0
     while f % TOTAL >= start + PER[i]:
         start += PER[i]
@@ -770,8 +774,57 @@ for f in FRAMES:
     S = PORTALS[i]["s"]
     k = S ** u
     p = PORTALS[i]["pos"]
-    scale = 1 / k
-    center = (-p[0] * (1 - k) / (1 - S) / k, -p[1] * (1 - k) / (1 - S) / k)
+    return i, (-p[0] * (1 - k) / (1 - S) / k, -p[1] * (1 - k) / (1 - S) / k), 1 / k
+
+
+def save_blend(path):
+    """動きとカメラの寄りをキーフレームにして保存する（次の世界の映し込みと光のにじみは合成なので入らない）。"""
+    paths = ("location", "rotation_euler", "scale")
+    objs = [o for sc, _ in WORLDS for o in sc.collection.objects]
+    points = [p for o in objs if o.type == "CURVE" for sp in o.data.splines for p in sp.points]
+    targets = [(o, n) for o in objs for n in paths] + [(p, "co") for p in points]
+    track = [[] for _ in targets]
+    for f in range(TOTAL):
+        animate(f)
+        for log, (ob, name) in zip(track, targets):
+            log.append(tuple(getattr(ob, name)))
+    moving = [(t, log) for t, log in zip(targets, track) if any(v != log[0] for v in log)]
+    print("animated channels:", len(moving), flush=True)
+    assert moving
+    for (ob, name), log in moving:
+        for f, v in enumerate(log):
+            setattr(ob, name, v)
+            ob.keyframe_insert(name, frame=f)
+    start = 0
+    for i, (sc, _) in enumerate(WORLDS):
+        for f in range(start, start + PER[i]):
+            _, center, scale = view(f)
+            cam = sc.camera.data
+            cam.lens = LENS * scale                     # 画面の横幅 = 1/scale
+            cam.shift_x, cam.shift_y = -center[0], -center[1]
+            for name in ("lens", "shift_x", "shift_y"):
+                cam.keyframe_insert(name, frame=f)
+        sc.frame_start, sc.frame_end = start, start + PER[i] - 1
+        sc.frame_set(start)
+        start += PER[i]
+        sc.render.fps = FPS
+        sc.render.resolution_x, sc.render.resolution_y = W, H
+        sc.name = ["1_海", "2_夜の街", "3_お菓子"][i]
+    for sc in list(bpy.data.scenes):
+        if sc not in [w[0] for w in WORLDS]:
+            bpy.data.scenes.remove(sc)
+    bpy.ops.wm.save_as_mainfile(filepath=path, compress=True)
+    bpy.ops.wm.open_mainfile(filepath=path)
+    print("saved", [(s.name, len(s.collection.objects)) for s in bpy.data.scenes], flush=True)
+    assert len(bpy.data.scenes) == 3 and bpy.data.actions
+
+
+os.makedirs(OUT, exist_ok=True)
+if FRAMES is None:
+    save_blend(os.path.join(OUT, "cg_zoom.blend"))
+for f in FRAMES or []:
+    animate(f)
+    i, center, scale = view(f)
     canvas = render(WORLDS[i][0], 0, 0, W, H, center, scale).copy()
     if i == 2:
         dew(canvas, center, scale)

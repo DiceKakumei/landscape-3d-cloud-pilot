@@ -3,6 +3,7 @@ name: CG zoom
 # 使い方:
 # 静止画の確認: gh workflow run cg_zoom.yml -f tag=cgz-still1 -f frames=0,60,120,180,240,300
 # 動画(408コマ/17秒): gh workflow run cg_zoom.yml -f tag=cgz-v1 -f width=720 -f samples=24
+# Blenderファイル: gh workflow run cg_zoom.yml -f tag=cgz-blend1 -f frames=blend
 # 結果は Release（tag名）に添付: gh release download <tag> -R DiceKakumei/landscape-3d-cloud-pilot -D <保存先>
 
 on:
@@ -80,8 +81,8 @@ jobs:
       - name: Upload stills
         if: inputs.frames != ''
         run: |
-          for f in output/*.png; do mv "$f" "output/$TAG-$(basename "$f")"; done
-          gh release upload "$TAG" output/*.png
+          for f in output/*; do mv "$f" "output/$TAG-$(basename "$f")"; done
+          gh release upload "$TAG" output/*
 
       - name: Upload segment
         if: inputs.frames == ''
