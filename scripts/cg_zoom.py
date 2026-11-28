@@ -777,8 +777,160 @@ def view(f):
     return i, (-p[0] * (1 - k) / (1 - S) / k, -p[1] * (1 - k) / (1 - S) / k), 1 / k
 
 
+# ---------- .blend書き出し：次の世界をBlender内の立体(Ray Portal)で映す ----------
+OFFSET = [-600.0, 600.0, 0.0]  # 3世界を1つのシーンに離して置く。200倍まで寄る苺の世界は精度のため原点
+
+
+def nodes(nt):
+    def new(kind, **inputs):
+        n = nt.nodes.new("ShaderNode" + kind)
+        for k, v in inputs.items():
+            n.inputs[int(k[1:])].default_value = v
+        return n
+
+    def op(kind, a, b=None):
+        n = nt.nodes.new("ShaderNodeMath")
+        n.operation = kind
+        for k, v in enumerate((a, b)):
+            if isinstance(v, (int, float)):
+                n.inputs[k].default_value = v
+            elif v is not None:
+                nt.links.new(v, n.inputs[k])
+        return n.outputs[0]
+    return new, op
+
+
+def portal_material(i):
+    """世界iの入口の素材。当たった視線を、次の世界のカメラから出る視線に置き換える。"""
+    q, child = PORTALS[i], (i + 1) % 3
+    m = bpy.data.materials.new("入口_" + q["kind"])
+    m.use_nodes = True
+    nt = m.node_tree
+    nt.nodes.clear()
+    new, op = nodes(nt)
+    sep = new("SeparateXYZ")
+    nt.links.new(new("NewGeometry").outputs["Position"], sep.inputs[0])
+    depth = op("DIVIDE", CAM_D, op("ADD", sep.outputs["Y"], CAM_D))
+    fx = op("DIVIDE", op("SUBTRACT", op("MULTIPLY", op("SUBTRACT", sep.outputs["X"], OFFSET[i]), depth), q["pos"][0] * 10), q["s"])
+    fz = op("DIVIDE", op("SUBTRACT", op("MULTIPLY", sep.outputs["Z"], depth), q["pos"][1] * 10), q["s"])
+    direction = new("CombineXYZ", i1=CAM_D)
+    nt.links.new(fx, direction.inputs[0])
+    nt.links.new(fz, direction.inputs[2])
+    ray = new("BsdfRayPortal")
+    ray.inputs["Position"].default_value = (OFFSET[child], -CAM_D, 0)
+    nt.links.new(direction.outputs[0], ray.inputs["Direction"])
+
+    seen, keep, near = (new("Value") for _ in range(3))
+    seen.name, keep.name, near.name = "seen", "keep", "near"
+    facing = new("LayerWeight", i0=0.5).outputs["Facing"]
+    if q["kind"] == "window":
+        factor, shine = seen.outputs[0], op("MULTIPLY", op("SUBTRACT", 1.0, near.outputs[0]), 0.05)
+        base = new("BsdfTransparent").outputs[0]
+    else:
+        rim = op("POWER", facing, 2.0)
+        soft = op("ADD", 0.35, op("MULTIPLY", op("SUBTRACT", 1.0, near.outputs[0]), 0.65))
+        factor = op("MULTIPLY", seen.outputs[0], op("SUBTRACT", 1.0, op("MULTIPLY", op("MULTIPLY", rim, soft), keep.outputs[0])))
+        shine = op("MULTIPLY", op("ADD", 0.03, op("MULTIPLY", op("POWER", facing, 3.0), 0.35)), keep.outputs[0])
+        if q["kind"] == "pearl":
+            p = new("BsdfPrincipled")
+            for name, v in (("Base Color", lin("f3ecf4")), ("Roughness", .14), ("Metallic", .35), ("Coat Weight", 1.0),
+                            ("Emission Color", lin("f3ecf4")), ("Emission Strength", .05)):
+                p.inputs[name].default_value = v
+        else:
+            p = new("BsdfGlass")
+            p.inputs["Color"].default_value = (1, .96, .96, 1)
+            p.inputs["Roughness"].default_value, p.inputs["IOR"].default_value = 0.02, 1.33
+        base = p.outputs[0]
+    inside = new("MixShader")
+    for a_, b_ in ((factor, inside.inputs[0]), (base, inside.inputs[1]), (ray.outputs[0], inside.inputs[2])):
+        nt.links.new(a_, b_)
+    gloss = new("BsdfGlossy")
+    gloss.inputs["Roughness"].default_value = 0.06
+    final = new("MixShader")
+    for a_, b_ in ((shine, final.inputs[0]), (inside.outputs[0], final.inputs[1]), (gloss.outputs[0], final.inputs[2]),
+                   (final.outputs[0], new("OutputMaterial").inputs["Surface"])):
+        nt.links.new(a_, b_)
+    return m
+
+
+def dome(sc, index):
+    """世界ごとの空。元のワールド背景のグラデーションを、その世界を囲む球に置き換える。"""
+    src = sc.world.node_tree.nodes
+    ramp0 = next(n for n in src if n.type == "VALTORGB").color_ramp
+    strength = next(n for n in src if n.type == "BACKGROUND").inputs["Strength"].default_value
+    m = bpy.data.materials.new("空%d" % index)
+    m.use_nodes = True
+    nt = m.node_tree
+    nt.nodes.clear()
+    new, op = nodes(nt)
+    sep = new("SeparateXYZ")
+    nt.links.new(new("TexCoord").outputs["Object"], sep.inputs[0])
+    rng = new("MapRange", i1=-0.08, i2=0.36)
+    ramp = new("ValToRGB")
+    for k in (0, 1):
+        ramp.color_ramp.elements[k].color = ramp0.elements[k].color
+    em = new("Emission")
+    em.inputs["Strength"].default_value = strength
+    for a_, b_ in ((sep.outputs["Z"], rng.inputs["Value"]), (rng.outputs["Result"], ramp.inputs[0]),
+                   (ramp.outputs[0], em.inputs[0]), (em.outputs[0], new("OutputMaterial").inputs["Surface"])):
+        nt.links.new(a_, b_)
+
+    def build(bm):
+        bmesh.ops.create_icosphere(bm, subdivisions=4, radius=1)
+    ob = add(sc, mesh("dome%d" % index, m, build, sharp=180), scale=(250, 250, 250))
+    ob.visible_shadow = False  # 太陽光は通す
+
+
+def on_berry(berry_ob, x, z):
+    """苺の表面の、正面から見て(x, z)にある点の奥行き。"""
+    c, r = berry_ob.location, berry_ob.scale[0]
+    skin_ob = next(o for o in berry_ob.children if o.type == "MESH" and o.data.name.startswith("berry"))
+    ok, hit, _, _ = skin_ob.ray_cast(Vector(((x - c.x) / r, -20, (z - c.z) / r)), Vector((0, 1, 0)))
+    assert ok, (x, z)
+    return c.y + hit.y * r
+
+
+def build_portals():
+    sea, night_sc, sweet = (w[0] for w in WORLDS)
+    mats = [portal_material(i) for i in range(3)]
+    # 真珠
+    pearl = next(o for o in sea.collection.objects if o.type == "MESH" and (o.location - Vector((0, 0, -2.2))).length < 1e-4)
+    pearl.data = pearl.data.copy()
+    pearl.data.materials[0] = mats[0]
+    pearl.name = "入口_真珠"
+    # 真珠の手前を通る泡は、寄り切ったときに写り込むので外す
+    animate(0)
+    for o in list(sea.collection.objects):
+        if o.type == "MESH" and o.data.materials[0].name.startswith("dff8ff") and abs(o.location.x) < 2.8 and o.location.y < 1.5:
+            sea.collection.objects.unlink(o)
+    # 店の窓
+    q = PORTALS[1]
+    ww = q["w"] * 10
+
+    def pane(bm):
+        bm.faces.new([bm.verts.new((x * ww / 2, 0, z * ww * 8 / 9)) for x, z in ((-1, -1), (1, -1), (1, 1), (-1, 1))])
+    add(night_sc, mesh("入口_窓", mats[1], pane), loc=(q["pos"][0] * 10, 0, q["pos"][1] * 10))
+    # 苺の水滴（主役と、周りの小さな水滴）
+    bpy.context.window.scene = sweet
+    bpy.context.view_layer.update()
+    berry_ob = next(o for o in sweet.collection.objects if o.type == "EMPTY" and (o.location - Vector((.75, 1.32, -2.95))).length < 1e-4)
+    water_m = mat("ffffff", 0.0).copy()
+    water_m.name = "水"
+    wp = next(n for n in water_m.node_tree.nodes if n.type == "BSDF_PRINCIPLED")
+    wp.inputs["Transmission Weight"].default_value, wp.inputs["IOR"].default_value = 1.0, 1.33
+    q = PORTALS[2]
+    for k, (x, y, r, m) in enumerate([(q["pos"][0], q["pos"][1], q["r"], mats[2])] + [(*d, water_m) for d in DEW]):
+        depth = on_berry(berry_ob, x * 10, y * 10)
+        ob = ball(sweet, m, (x * 10, depth - r * 10 * .4, y * 10), r * 10, scale=(1, .7, 1))
+        ob.name = "入口_水滴" if k == 0 else "水滴%d" % k
+    return mats
+
+
 def save_blend(path):
-    """動きとカメラの寄りをキーフレームにして保存する（次の世界の映し込みと光のにじみは合成なので入らない）。"""
+    """1つのシーンにまとめ、動き・カメラの寄り・入口の見え方をキーフレームにして保存する。"""
+    mats = build_portals()
+    for i, (sc, _) in enumerate(WORLDS):
+        dome(sc, i)
     paths = ("location", "rotation_euler", "scale")
     objs = [o for sc, _ in WORLDS for o in sc.collection.objects]
     points = [p for o in objs if o.type == "CURVE" for sp in o.data.splines for p in sp.points]
@@ -795,28 +947,82 @@ def save_blend(path):
         for f, v in enumerate(log):
             setattr(ob, name, v)
             ob.keyframe_insert(name, frame=f)
-    start = 0
+
+    for f in range(TOTAL):
+        i, _, scale = view(f)
+        for j, m in enumerate(mats):
+            q = PORTALS[j]
+            sc_ = scale if i == j else 1.0
+            half = (q["w"] / 2 if q["kind"] == "window" else q["r"]) * sc_
+            p = float(smooth(0, 1, math.log(sc_) / math.log(1 / q["s"]) / .8))
+            vals = dict(seen=q["seen"] + (1 - q["seen"]) * float(smooth(.05, .75, p)),
+                        keep=float(1 - smooth(.5, .98, half)), near=p)
+            for name, v in vals.items():
+                out = m.node_tree.nodes[name].outputs[0]
+                out.default_value = v
+                out.keyframe_insert("default_value", frame=f)
+
+    master = bpy.data.scenes.new("寄り続けるCG")
+    names = ["1_海", "2_夜の街", "3_お菓子"]
+    cams, cols = [], []
     for i, (sc, _) in enumerate(WORLDS):
+        col = bpy.data.collections.new(names[i])
+        master.collection.children.link(col)
+        cols.append(col)
+        anchor = bpy.data.objects.new(names[i] + "_基準", None)
+        anchor.location.x = OFFSET[i]
+        col.objects.link(anchor)
+        for o in sc.collection.objects:
+            col.objects.link(o)
+            if o.parent is None:
+                o.parent = anchor
+            if o.type == "LIGHT" and o.data.type == "SUN":  # 太陽は自分の世界だけを照らす
+                o.light_linking.receiver_collection = col
+        cam = sc.camera
+        cam.name, cam.data.clip_end = names[i] + "_カメラ", 2000
+        cams.append(cam)
+    start = 0
+    for i, cam in enumerate(cams):
+        master.timeline_markers.new(names[i], frame=start).camera = cam
         for f in range(start, start + PER[i]):
             _, center, scale = view(f)
-            cam = sc.camera.data
-            cam.lens = LENS * scale                     # 画面の横幅 = 1/scale
-            cam.shift_x, cam.shift_y = -center[0], -center[1]
+            cam.data.lens = LENS * scale                     # 画面の横幅 = 1/scale
+            cam.data.shift_x, cam.data.shift_y = -center[0], -center[1]
             for name in ("lens", "shift_x", "shift_y"):
-                cam.keyframe_insert(name, frame=f)
-        sc.frame_start, sc.frame_end = start, start + PER[i] - 1
-        sc.frame_set(start)
+                cam.data.keyframe_insert(name, frame=f)
         start += PER[i]
-        sc.render.fps = FPS
-        sc.render.resolution_x, sc.render.resolution_y = W, H
-        sc.name = ["1_海", "2_夜の街", "3_お菓子"][i]
+    master.camera = cams[0]
+    ref = WORLDS[0][0]
+    master.render.engine = "CYCLES"
+    for name in ("samples", "use_denoising", "denoiser", "sample_clamp_indirect", "device"):
+        setattr(master.cycles, name, getattr(ref.cycles, name))
+    master.cycles.max_bounces, master.cycles.transparent_max_bounces = 12, 32
+    master.render.resolution_x, master.render.resolution_y, master.render.fps = W, H, FPS
+    master.render.image_settings.file_format = "PNG"
+    master.view_settings.view_transform = "Standard"
+    master.frame_start, master.frame_end = 0, TOTAL - 1
+    black = bpy.data.worlds.new("黒")
+    black.use_nodes = True
+    next(n for n in black.node_tree.nodes if n.type == "BACKGROUND").inputs["Color"].default_value = (0, 0, 0, 1)
+    master.world = black
+    bpy.context.window.scene = master
     for sc in list(bpy.data.scenes):
-        if sc not in [w[0] for w in WORLDS]:
+        if sc != master:
             bpy.data.scenes.remove(sc)
+    master.frame_set(0)
     bpy.ops.wm.save_as_mainfile(filepath=path, compress=True)
+
+    # 確認：保存したファイルを開き直し、そのまま描画する
     bpy.ops.wm.open_mainfile(filepath=path)
-    print("saved", [(s.name, len(s.collection.objects)) for s in bpy.data.scenes], flush=True)
-    assert len(bpy.data.scenes) == 3 and bpy.data.actions
+    sc = bpy.context.scene
+    assert len(bpy.data.scenes) == 1 and len(sc.timeline_markers) == 3 and bpy.data.actions
+    sc.render.resolution_percentage = 75
+    for f in (0, 75, 119, 120, 240, 305, 407):
+        sc.frame_set(f)
+        sc.camera = [mk for mk in sorted(sc.timeline_markers, key=lambda mk: mk.frame) if mk.frame <= f][-1].camera
+        sc.render.filepath = os.path.join(os.path.dirname(path), "check%04d.png" % f)
+        bpy.ops.render.render(write_still=True)
+        print("check", f, flush=True)
 
 
 os.makedirs(OUT, exist_ok=True)
