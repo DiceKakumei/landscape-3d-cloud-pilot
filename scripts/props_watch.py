@@ -150,9 +150,9 @@ for i in range(N):
 hair = bpy.data.objects.new("hair", cv); bpy.context.scene.collection.objects.link(hair)
 hair.data.materials.append(BLUE); hair.parent = W; hair.location = (*BAL_XY, -0.84)
 # テンプ受けとブリッジ
-box(0.2, 1.6, 0.06, (BAL_XY[0] + 0.55, BAL_XY[1] - 0.45, -0.95), NICKEL, W, bevel=0.02, rot=(0, 0, 0.6))
+box(0.16, 1.5, 0.04, (BAL_XY[0] + 0.55, BAL_XY[1] - 0.45, -0.95), NICKEL, W, bevel=0.02, rot=(0, 0, 0.6))
 cyl(0.07, 0.03, (*BAL_XY, -0.97), RUBY, W, v=12)
-box(0.35, 2.4, 0.06, (-0.55, -0.6, -0.8), NICKEL, W, bevel=0.03, rot=(0, 0, -0.5))
+box(0.2, 2.2, 0.04, (-0.55, -0.6, -0.8), NICKEL, W, bevel=0.03, rot=(0, 0, -0.5))
 for XY in ((-0.1, -1.6), (-1.0, 0.45)):
     cyl(0.07, 0.03, (*XY, -0.84), RUBY, W, v=12)
 for XY in ((1.7, -0.6), (-1.6, -1.2), (-0.5, 1.9), (1.8, 1.0)):  # ネジ

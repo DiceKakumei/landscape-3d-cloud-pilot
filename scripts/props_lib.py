@@ -49,7 +49,7 @@ def mat(name, color, metal=0.0, rough=0.5, wood=False, emit=0.0, alpha=1.0, tran
 def fin(o, m, parent=None, smooth=True):
     if m: o.data.materials.append(m)
     if parent: o.parent = parent
-    for p in o.data.polygons: p.use_smooth = smooth
+    for p in o.data.polygons: p.use_smooth = smooth and len(p.vertices) == 4  # 円柱の蓋(多角形)は平らに
     return o
 
 

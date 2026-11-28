@@ -103,7 +103,7 @@ place("Q", 6, Q_yz, GX + 0.3, STEEL)
 cyl_x(0.04, 1.0, (GX + 0.55, *Q_yz), STEEL, MV)
 fan = empty("fan", (GX + 0.9, *Q_yz), MV)  # ガバナーの羽根(2枚)
 for s in (1, -1):
-    b = box(0.5, 0.03, 0.55, (0, 0, s * 0.33), STEEL, fan, bevel=0.01)  # 羽根は軸を含む面(空気抵抗で減速)
+    b = box(0.6, 0.03, 0.8, (0, 0, s * 0.45), BRASS, fan, bevel=0.01)  # 羽根は軸を含む面(空気抵抗で減速)
 cyl_x(0.07, 0.1, (0, 0, 0), STEEL, fan)
 
 

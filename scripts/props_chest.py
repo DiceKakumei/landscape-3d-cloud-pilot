@@ -17,7 +17,7 @@ WOOD = mat("wood", (0.36, 0.17, 0.07), rough=0.55, wood=True)
 IRON = mat("iron", (0.13, 0.12, 0.11), metal=1.0, rough=0.55)
 BRASS = mat("brass", (0.85, 0.6, 0.28), metal=1.0, rough=0.28)
 STEEL = mat("steel", (0.6, 0.6, 0.62), metal=1.0, rough=0.3)
-GLASS = mat("glass", (0.9, 0.95, 1.0), rough=0.02, transmission=1.0)
+GLASS = mat("glass", (0.8, 0.9, 1.0), rough=0.05, alpha=0.12)  # ほぼ透明(中を見せる)
 GOLD = mat("gold", (1.0, 0.7, 0.25), metal=1.0, rough=0.18)
 GEM = mat("gem", (0.05, 0.6, 0.2), rough=0.02, transmission=0.8)
 FLOOR = mat("floor", (0.22, 0.2, 0.18), rough=0.8)
@@ -106,7 +106,7 @@ key = empty("key", (0, -LDp - 3.0, KZ), LK)
 kr = empty("key_rot", (0, 0, 0), key)
 cyl(0.07, 0.95, (0, -0.025, 0), BRASS, kr, axis="Y", v=16)  # 軸
 torus(0.12, 0.05, (0, 0.0, 0), BRASS, kr, axis="Y")  # つば
-torus(0.42, 0.08, (0, -0.95, 0), BRASS, kr, axis="X")  # 握り(輪)
+torus(0.3, 0.06, (0, -0.8, 0), BRASS, kr, axis="X")  # 握り(輪)
 box(0.08, 0.2, 0.55, (0, 0.3, -0.3), BRASS, kr, bevel=0.01)  # ビット: 下向き。回すと上で爪を押す
 
 # ---------- 中身 ----------
@@ -123,13 +123,13 @@ glow = bpy.data.lights.new("glow", "POINT"); glow.color = (1.0, 0.75, 0.35); glo
 gl = bpy.data.objects.new("glow", glow); bpy.context.scene.collection.objects.link(gl); gl.location = (0, 0, 4.5)
 
 # ---------- 動き ----------
-def key_in(f): return (3.0 - 0.02) * seg(f, 10, 30)  # 鍵が鍵穴へ
-def key_turn(f): return -2 * PI * seg(f, 36, 72)  # 反時計回りに1回転(正面から)
+def key_in(f): return 3.0 - 0.02  # 最初から鍵穴に挿さっている(宙に浮かせない)
+def key_turn(f): return -2 * PI * seg(f, 22, 58)  # 反時計回りに1回転(正面から)
 def bolt_x(f):
     """ビットが真上を通る(回転角150°〜210°)あいだだけ、かんぬきを左へ0.45押す"""
     a = -key_turn(f)
     return -0.45 * max(0.0, min(1.0, (a - math.radians(150)) / math.radians(60)))
-def lid_angle(f): return -math.radians(105) * seg(f, 80, 112)
+def lid_angle(f): return -math.radians(105) * seg(f, 66, 98)
 
 for f in range(1, FEND + 1):
     key.location.y = -LDp - 3.0 + key_in(f); key.keyframe_insert("location", index=1, frame=f)
@@ -138,15 +138,15 @@ for f in range(1, FEND + 1):
     la = lid_angle(f)
     lid.rotation_euler.x = la; key_rot(lid, f, 0)
     hasp.rotation_euler.x = -la * 0.85; key_rot(hasp, f, 0)  # 掛け金は垂れ下がったまま
-    glow.energy = 400 * seg(f, 85, 115); glow.keyframe_insert("energy", frame=f)
+    glow.energy = 400 * seg(f, 70, 100); glow.keyframe_insert("energy", frame=f)
 
 # ---------- カメラ・光 ----------
 camera([
     (1, (7, -20, 11), (0, 0, 3.2)),
-    (14, (4, -14, 6.5), (0, -3, 3.4)),
-    (34, (2.2, -10.0, 4.6), (0, -3.6, 3.3)),
-    (74, (1.6, -9.3, 4.3), (0, -3.6, 3.3)),
-    (100, (5, -17, 12), (0, 0, 3.6)),
+    (12, (-1.0, -9.2, 5.6), (0, -3.6, 3.7)),
+    (30, (-0.9, -8.8, 5.4), (0, -3.6, 3.7)),
+    (60, (-0.8, -8.6, 5.3), (0, -3.6, 3.7)),
+    (90, (5, -17, 12), (0, 0, 3.6)),
     (144, (2.5, -12, 13), (0, 0.3, 2.6)),
 ], lens=50)
 C = (0, 0, 3)

@@ -129,9 +129,11 @@ def text(s, size, loc, rot, mat, parent=None, extr=0.02):
 
 def gear(r, teeth, depth, mat, loc=(0, 0, 0), rot=(0, 0, 0), parent=None):
     bm = bmesh.new(); vs = []
-    for i in range(teeth * 4):
-        a = 2 * math.pi * i / (teeth * 4); rr = r if i % 4 in (1, 2) else r * 0.86
-        vs.append(bm.verts.new((math.cos(a) * rr, math.sin(a) * rr, 0)))
+    mod = 2 * r / (teeth + 2); root = r - 2.25 * mod; pitch = 2 * math.pi / teeth
+    for i in range(teeth):
+        for off, rr in ((-0.30, root), (-0.15, r), (0.15, r), (0.30, root)):
+            a_ = (i + off) * pitch
+            vs.append(bm.verts.new((math.cos(a_) * rr, math.sin(a_) * rr, 0)))
     f = bm.faces.new(vs)
     ex = bmesh.ops.extrude_face_region(bm, geom=[f])
     for v in [g for g in ex["geom"] if isinstance(g, bmesh.types.BMVert)]:
@@ -164,6 +166,9 @@ ROMAN = ["XII", "I", "II", "III", "IIII", "V", "VI", "VII", "VIII", "IX", "X", "
 def hand(length, width, ang, mat, root, z=0.0):
     c = Vector((math.cos(ang), math.sin(ang), 0)) * length / 2
     box(length, width, width * 0.6, (c.x, c.y, z), (0, 0, ang), mat, root)
+    if width >= 0.04 * length:  # 太い針(時針)は先近くにブレゲ風の丸穴の輪
+        e = Vector((math.cos(ang), math.sin(ang), 0)) * length * 0.72
+        torus(width * 1.5, width * 0.28, (e.x, e.y, z), (0, 0, 0), mat, root, seg=24, seg2=8)
 
 
 def clock(Rr, root, gold, num, hour=-0.6, minute=0.5, face=None, ticks=True):
@@ -388,49 +393,7 @@ def scene4():
     box(80, 3, 0.05, (0, 30, 0.02), mat=M("hz", (1, 0.7, 0.95), emit=5.0, ecolor=(1, 0.65, 0.95)))
     for k in range(80):
         sphere(R.uniform(0.02, 0.08), (R.uniform(-6, 6), R.uniform(2, 14), R.uniform(0, 12)), M("d", (0.7, 0.8, 1), emit=18), seg=6)
-    # 宇宙飛行士(Meshy)
-    glb = os.path.join(WORKSPACE, "assets", "astronaut.glb")
-    ax, ay = 0.7, 0.0
-    if os.path.exists(glb):
-        before = set(bpy.data.objects)
-        bpy.ops.import_scene.gltf(filepath=glb)
-        new = [o for o in bpy.data.objects if o not in before]
-        for o in new:
-            if o.parent:
-                m = o.matrix_world.copy(); o.parent = None; o.matrix_world = m
-        meshes = [o for o in new if o.type == "MESH"]
-        for o in new:
-            if o.type != "MESH": bpy.data.objects.remove(o)
-        bpy.ops.object.select_all(action="DESELECT")
-        for o in meshes: o.select_set(True)
-        bpy.context.view_layer.objects.active = meshes[0]
-        if len(meshes) > 1: bpy.ops.object.join()
-        a = bpy.context.active_object
-        bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
-        dims = a.dimensions
-        s = 1.85 / max(dims.z, 0.001); a.scale = (s, s, s)
-        bpy.ops.object.transform_apply(scale=True)
-        a.rotation_euler = (0, 0, math.radians(float(os.environ.get("ASTRO_ROT", "180"))))
-        bpy.ops.object.transform_apply(rotation=True)
-        zs = [(a.matrix_world @ v.co).z for v in a.data.vertices]
-        a.location = (ax, ay, -min(zs) + 0.05)
-    else:
-        print("astronaut.glb missing (Meshy 402), using procedural astronaut")
-        suit = M("suit", (0.85, 0.87, 0.92), rough=0.55)
-        gray = M("sg", (0.35, 0.37, 0.42), rough=0.6)
-        orange = M("so", (0.9, 0.3, 0.1), rough=0.6)
-        ar = empty((ax, ay, 0), (0, 0, math.radians(float(os.environ.get("ASTRO_ROT", "180")) - 180)))
-        sphere(0.2, (0, 0, 1.65), suit, ar, seg=24)                                  # ヘルメット
-        sphere(0.16, (0, -0.07, 1.66), M("vz", (0.02, 0.03, 0.06), metal=0.9, rough=0.1), ar, seg=20, scale=(1, 0.7, 0.8))
-        box(0.5, 0.3, 0.55, (0, 0, 1.2), mat=suit, parent=ar)                         # 胴
-        box(0.42, 0.22, 0.5, (0, 0.24, 1.25), mat=gray, parent=ar)                    # バックパック
-        for sx in (-1, 1):
-            cyl(0.08, 0.5, (sx * 0.32, 0, 1.2), (0, math.radians(sx * 8), 0), suit, ar, v=12)   # 腕
-            sphere(0.08, (sx * 0.34, 0, 0.93), gray, ar, seg=10)                                # 手袋
-            cyl(0.1, 0.55, (sx * 0.12, 0, 0.62), mat=suit, parent=ar, v=12)                     # 脚
-            box(0.17, 0.3, 0.14, (sx * 0.12, -0.05, 0.1), mat=gray, parent=ar)                  # ブーツ
-        box(0.1, 0.02, 0.1, (0.28, -0.16, 1.3), mat=orange, parent=ar)                          # 肩の印
-        ar.scale = (1.0, 1.0, 1.0)
+    ax, ay = 0.7, 0.0  # 宇宙飛行士は外した(ユーザー指示)。光の向きの基準点だけ残す
     area((-1, -6, 4), (ax, ay, 1), 6, 500, (1.0, 0.7, 0.95))   # 時計側の縁光
     area((3, -8, 3), (ax, ay, 1), 4, 150, (0.7, 0.8, 1.0))
     camera((0, -8.5, 1.5), (0.8, 0, 5.0), 30, roll=0.0)
