@@ -30,7 +30,7 @@ PER = 120                      # 1世界あたりのフレーム数（5秒）
 PORTALS = [
     dict(kind="pearl", pos=(0.0, -0.22), r=0.11, seen=0.10),
     dict(kind="window", pos=(0.0, -0.29), w=0.21, seen=1.0),
-    dict(kind="drop", pos=(0.075, -0.25), r=0.016, seen=0.08),
+    dict(kind="drop", pos=(0.075, -0.25), r=0.0055, seen=0.08),
 ]
 # 次の世界の縮尺。丸は寄り切ると画面の対角(1.02)を覆う。窓は画面と同じ縦横比なので幅そのもの
 for q in PORTALS:
@@ -498,6 +498,25 @@ def sweets():
         cyl(sc, mat("ffffff", .15, coat=1), (x, y, z), r * .85, r, .14, bevel=.05)
         torus(sc, mat("e8b45a", .25, metal=.8), (x, y, z + .08), r * .94, .035)
 
+    def skin():
+        """苺の皮。大きく寄っても赤一色にならないよう、細かい凹凸と色むらを入れる。"""
+        m = mat("e5173f", .24, coat=1, sss=.15)
+        nt = m.node_tree
+        if not nt.nodes.get("pores"):
+            p = next(n for n in nt.nodes if n.type == "BSDF_PRINCIPLED")
+            co, nz, ramp, bump = (nt.nodes.new("ShaderNode" + n) for n in ("TexCoord", "TexNoise", "ValToRGB", "Bump"))
+            nz.name = "pores"
+            for name, v in (("Scale", 14.0), ("Detail", 10.0), ("Roughness", .68)):
+                nz.inputs[name].default_value = v
+            lo, hi = ramp.color_ramp.elements[0], ramp.color_ramp.elements[1]
+            lo.position, lo.color, hi.position, hi.color = .35, lin("c20f33"), .68, lin("f5294f")
+            bump.inputs["Strength"].default_value, bump.inputs["Distance"].default_value = .5, .035
+            for a_, b_ in ((co.outputs["Object"], nz.inputs["Vector"]), (nz.outputs["Fac"], ramp.inputs["Fac"]),
+                           (ramp.outputs["Color"], p.inputs["Base Color"]), (nz.outputs["Fac"], bump.inputs["Height"]),
+                           (bump.outputs["Normal"], p.inputs["Normal"])):
+                nt.links.new(a_, b_)
+        return m
+
     def berry(c, r, seeds, skip=None):
         g = empty(sc, loc=c, scale=(r, r, r))
 
@@ -509,13 +528,13 @@ def sweets():
             bmesh.ops.create_icosphere(bm, subdivisions=5, radius=1)
             for v in bm.verts:
                 v.co = shape(v.co.normalized())
-        add(sc, mesh("berry", mat("e5173f", .24, coat=1, sss=.15), build, sharp=80), parent=g)
+        add(sc, mesh("berry", skin(), build, sharp=80), parent=g)
         for k in range(seeds):  # 種（黄金角で均等に）
             h = .72 - 1.64 * (k + .5) / seeds
             a_ = k * 2.39996
             n_ = Vector((math.sqrt(1 - h * h) * math.cos(a_), math.sqrt(1 - h * h) * math.sin(a_), h))
             p_ = shape(n_)
-            if skip and (Vector(c) + p_ * r - Vector(skip)).length < .28:
+            if skip and (Vector(c) + p_ * r - Vector(skip)).length < .15:
                 continue
             ob = ball(sc, mat("f7d65a", .35), tuple(p_ * 1.005), .042, scale=(1, 1, 1.4), parent=g)
         for k in range(7):
@@ -693,7 +712,8 @@ def water(area, dx, dy, d, mask, hw, hh, ox, oy, inner, seen, p, keep):
 
 
 # 苺についた、中に何も映らない小さな水滴（画面座標は泡ではなく世界のもの）
-DEW = [(0.018, -0.292, .007), (0.128, -0.222, .005), (0.112, -0.318, .009), (0.032, -0.2, .004)]
+DEW = [(0.018, -0.292, .0035), (0.128, -0.222, .0025), (0.112, -0.318, .004), (0.032, -0.2, .002),
+       (0.0862, -0.2415, .0014), (0.0615, -0.2605, .0009), (0.0845, -0.2625, .0006)]
 
 
 def dew(canvas, center, scale):
