@@ -30,7 +30,7 @@ PER = 120                      # 1世界あたりのフレーム数（5秒）
 PORTALS = [
     dict(kind="pearl", pos=(0.0, -0.22), r=0.11, seen=0.10),
     dict(kind="window", pos=(0.0, -0.29), w=0.21, seen=1.0),
-    dict(kind="drop", pos=(0.075, -0.25), r=0.055, seen=0.08),
+    dict(kind="drop", pos=(0.075, -0.25), r=0.016, seen=0.08),
 ]
 # 次の世界の縮尺。丸は寄り切ると画面の対角(1.02)を覆う。窓は画面と同じ縦横比なので幅そのもの
 for q in PORTALS:
@@ -515,7 +515,7 @@ def sweets():
             a_ = k * 2.39996
             n_ = Vector((math.sqrt(1 - h * h) * math.cos(a_), math.sqrt(1 - h * h) * math.sin(a_), h))
             p_ = shape(n_)
-            if skip and (Vector(c) + p_ * r - Vector(skip)).length < .75:
+            if skip and (Vector(c) + p_ * r - Vector(skip)).length < .28:
                 continue
             ob = ball(sc, mat("f7d65a", .35), tuple(p_ * 1.005), .042, scale=(1, 1, 1.4), parent=g)
         for k in range(7):
@@ -526,7 +526,7 @@ def sweets():
 
     # 手前の主役の苺（水滴がつく）
     plate(.5, 1.2, -4.82, 3.0)
-    berry((.75, 1.32, -2.95), 1.58, 170, skip=(.75, 0, -2.5))
+    berry((.75, 1.32, -2.95), 1.58, 170, skip=(.75, 0, -2.5))  # 水滴の下だけ種を抜く
     berry((-1.25, .6, -4.1), .66, 70)
     for x, y, rz in ((-1.9, -.4, .4), (2.5, .2, -.5)):
         tube(sc, mat("52a84a", .5), [(x, y, -4.68), (x + .6 * math.cos(rz), y + .6 * math.sin(rz), -4.55),
@@ -693,7 +693,7 @@ def water(area, dx, dy, d, mask, hw, hh, ox, oy, inner, seen, p, keep):
 
 
 # 苺についた、中に何も映らない小さな水滴（画面座標は泡ではなく世界のもの）
-DEW = [(-0.012, -0.335, .017), (0.165, -0.19, .013), (0.15, -0.355, .022), (0.0, -0.175, .009)]
+DEW = [(0.018, -0.292, .007), (0.128, -0.222, .005), (0.112, -0.318, .009), (0.032, -0.2, .004)]
 
 
 def dew(canvas, center, scale):
