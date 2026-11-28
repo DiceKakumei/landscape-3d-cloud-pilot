@@ -1,0 +1,82 @@
+name: Render blend
+
+# Releaseにある.blendを、中身を変えずにCyclesで描画して動画にする（BlenderがMP4を直接書き出し、分割分は無劣化で連結）
+# gh workflow run render_blend.yml -f source_tag=cgz-blend5 -f tag=cgz-v3-cycles
+# 結果: gh release download <tag> -R DiceKakumei/landscape-3d-cloud-pilot -p "<tag>.mp4"
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_tag:
+        description: '.blendが添付されたReleaseのタグ名'
+        required: true
+      tag:
+        description: '結果を添付するReleaseのタグ名'
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  GH_TOKEN: ${{ github.token }}
+  TAG: ${{ inputs.tag }}
+
+jobs:
+  prep:
+    runs-on: ubuntu-latest
+    steps:
+      - run: gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --title "$TAG" --notes "render of ${{ inputs.source_tag }}"
+
+  render:
+    needs: prep
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
+    env:
+      PART: ${{ matrix.part }}
+      SOURCE: ${{ inputs.source_tag }}
+    steps:
+      - name: Download Blender
+        run: |
+          for base in https://download.blender.org https://mirrors.ocf.berkeley.edu/blender https://mirror.clarkson.edu/blender; do
+            curl -fL -o blender.tar.xz "$base/release/Blender5.0/blender-5.0.1-linux-x64.tar.xz" && xz -t blender.tar.xz && break
+          done
+          tar -xf blender.tar.xz
+          mv blender-5.0.1-linux-x64 blender
+          echo "$(pwd)/blender" >> "$GITHUB_PATH"
+
+      - name: Render
+        run: |
+          gh release download "$SOURCE" --repo "$GITHUB_REPOSITORY" -p '*.blend' -O scene.blend
+          # 出力形式だけ動画にする（シーンの内容は変えない）。408コマを17分割
+          cat > video.py <<'EOF'
+          import bpy
+          s = bpy.context.scene
+          assert s.render.engine == "CYCLES" and s.frame_end == 407, (s.render.engine, s.frame_end)
+          s.render.image_settings.media_type = "VIDEO"
+          s.render.image_settings.file_format = "FFMPEG"
+          s.render.ffmpeg.format = "MPEG4"
+          s.render.ffmpeg.codec = "H264"
+          s.render.ffmpeg.constant_rate_factor = "PERC_LOSSLESS"
+          s.render.use_file_extension = False
+          EOF
+          name=$(printf 'part%02d.mp4' "$PART")
+          blender --background scene.blend --python-exit-code 1 --python video.py -o "$PWD/$name" -s $((PART * 24)) -e $((PART * 24 + 23)) -a
+          gh release upload "$TAG" "$name" --repo "$GITHUB_REPOSITORY"
+
+  join:
+    needs: render
+    runs-on: ubuntu-latest
+    steps:
+      - name: Concat without re-encoding
+        run: |
+          command -v ffmpeg || (sudo apt-get update && sudo apt-get install -y ffmpeg)
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" -p 'part*.mp4'
+          test "$(ls part*.mp4 | wc -l)" = 17
+          printf "file '%s'\n" part*.mp4 > list.txt
+          ffmpeg -y -f concat -safe 0 -i list.txt -c copy "$TAG.mp4"
+          test "$(ffprobe -v error -count_packets -select_streams v -show_entries stream=nb_read_packets -of csv=p=0 "$TAG.mp4")" = 408
+          gh release upload "$TAG" "$TAG.mp4" --repo "$GITHUB_REPOSITORY"
