@@ -17,7 +17,7 @@ WOOD = mat("wood", (0.36, 0.17, 0.07), rough=0.55, wood=True)
 IRON = mat("iron", (0.13, 0.12, 0.11), metal=1.0, rough=0.55)
 BRASS = mat("brass", (0.85, 0.6, 0.28), metal=1.0, rough=0.28)
 STEEL = mat("steel", (0.6, 0.6, 0.62), metal=1.0, rough=0.3)
-GLASS = mat("glass", (0.8, 0.9, 1.0), rough=0.05, alpha=0.12)  # ほぼ透明(中を見せる)
+GLASS = mat("glass", (0.8, 0.9, 1.0), rough=0.05, alpha=0.04)  # ほぼ透明(中を見せる)
 GOLD = mat("gold", (1.0, 0.7, 0.25), metal=1.0, rough=0.18)
 GEM = mat("gem", (0.05, 0.6, 0.2), rough=0.02, transmission=0.8)
 FLOOR = mat("floor", (0.22, 0.2, 0.18), rough=0.8)
@@ -98,9 +98,11 @@ box(0.07, 0.06, 0.22, (0, -0.01, -0.08), DARK, esc, bevel=0)
 # かんぬき: 輪を貫く鉄の棒(左へ0.45滑ると輪から抜ける)。下に鍵の先が押す爪(タロン)
 BZ = 1.0
 bolt = empty("bolt", (0, -0.35, BZ), LK)
-box(1.5, 0.25, 0.25, (-0.5, 0, 0), STEEL, bolt, bevel=0.03)
+box(1.0, 0.25, 0.25, (-0.25, 0, 0), STEEL, bolt, bevel=0.03)
 box(0.14, 0.25, 0.7, (0.12, 0, -0.48), STEEL, bolt, bevel=0.02)
-box(0.6, 0.3, 0.06, (-0.9, -0.05, BZ - 0.16), IRON, LK, bevel=0)  # 受け
+box(0.5, 0.3, 0.06, (-0.85, -0.05, BZ - 0.16), IRON, LK, bevel=0)  # 受け
+lp = bpy.data.lights.new("lock_light", "POINT"); lp.energy = 3; lp.shadow_soft_size = 0.3  # 錠前の中を照らす
+lo = bpy.data.objects.new("lock_light", lp); bpy.context.scene.collection.objects.link(lo); lo.parent = LK; lo.location = (0.8, -0.5, 0.2)
 # 鍵(ローカル+Yが錠前の奥)
 key = empty("key", (0, -LDp - 3.0, KZ), LK)
 kr = empty("key_rot", (0, 0, 0), key)
