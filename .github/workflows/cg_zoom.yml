@@ -2,7 +2,7 @@ name: CG zoom
 
 # 使い方:
 # 静止画の確認: gh workflow run cg_zoom.yml -f tag=cgz-still1 -f frames=0,60,120,180,240,300
-# 動画(360コマ/15秒): gh workflow run cg_zoom.yml -f tag=cgz-v1 -f width=720 -f samples=24
+# 動画(408コマ/17秒): gh workflow run cg_zoom.yml -f tag=cgz-v1 -f width=720 -f samples=24
 # 結果は Release（tag名）に添付: gh release download <tag> -R DiceKakumei/landscape-3d-cloud-pilot -D <保存先>
 
 on:
@@ -40,13 +40,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           if [ -n "$FRAMES" ]; then echo "parts=[0]" >> "$GITHUB_OUTPUT"
-          else echo "parts=[$(seq -s, 0 17)]" >> "$GITHUB_OUTPUT"; fi
+          else echo "parts=[$(seq -s, 0 16)]" >> "$GITHUB_OUTPUT"; fi
           gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --title "$TAG" --notes "cg_zoom"
 
   render:
     needs: prep
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 180
     strategy:
       fail-fast: false
       matrix:
@@ -73,8 +73,8 @@ jobs:
 
       - name: Render
         run: |
-          # 360コマを18分割(1ジョブ20コマ)
-          range=${FRAMES:-$((PART * 20))-$((PART * 20 + 19))}
+          # 408コマを17分割(1ジョブ24コマ)
+          range=${FRAMES:-$((PART * 24))-$((PART * 24 + 23))}
           blender --background --python-exit-code 1 --python scripts/cg_zoom.py -- output "$range" "$WIDTH" "$SAMPLES"
 
       - name: Upload stills
@@ -103,7 +103,7 @@ jobs:
         run: |
           command -v ffmpeg || (sudo apt-get update && sudo apt-get install -y ffmpeg)
           gh release download "$TAG" --repo "$GITHUB_REPOSITORY" -p 'part*.mp4'
-          test "$(ls part*.mp4 | wc -l)" = 18
+          test "$(ls part*.mp4 | wc -l)" = 17
           printf "file '%s'\n" part*.mp4 > list.txt
           ffmpeg -y -f concat -safe 0 -i list.txt -c copy -movflags +faststart "$TAG.mp4"
           gh release upload "$TAG" "$TAG.mp4" --repo "$GITHUB_REPOSITORY"

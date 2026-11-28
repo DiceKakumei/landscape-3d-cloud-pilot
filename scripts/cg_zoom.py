@@ -25,7 +25,7 @@ H = W * 16 // 9
 SAMPLES = int(argv[3]) if len(argv) > 3 else 24
 
 FPS = 24
-PER = 120                      # 1世界あたりのフレーム数（5秒）
+PER = [120, 120, 168]          # 世界ごとのフレーム数（海5秒・夜5秒・お菓子7秒）
 # 次の世界が入る物。pos/大きさは画面の横幅=1の座標（原点は中央、上が+）。seenは引きの状態で中が見える濃さ
 PORTALS = [
     dict(kind="pearl", pos=(0.0, -0.22), r=0.11, seen=0.10),
@@ -608,7 +608,7 @@ def sweets():
 
 bpy.ops.wm.read_factory_settings(use_empty=True)
 WORLDS = [underwater(), night(), sweets()]
-TOTAL = PER * len(WORLDS)
+TOTAL = sum(PER)
 TMP = tempfile.mkdtemp()
 
 
@@ -761,7 +761,11 @@ for f in FRAMES:
     for _, anim in WORLDS:
         for fn in anim:
             fn(t)
-    i, u = (f // PER) % 3, (f % PER) / PER
+    i, start = 0, 0
+    while f % TOTAL >= start + PER[i]:
+        start += PER[i]
+        i += 1
+    u = (f % TOTAL - start) / PER[i]
     u -= 0.6 * math.sin(TAU * u) / TAU  # 世界を見せる所はゆっくり、くぐる所は速く
     S = PORTALS[i]["s"]
     k = S ** u
