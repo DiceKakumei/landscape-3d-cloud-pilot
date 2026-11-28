@@ -633,7 +633,7 @@ def portal(canvas, level, center, scale, depth):
     hw = size / 2 * W
     hh = hw * 16 / 9 if window else hw
     cx, cy = (c[0] + 0.5) * W, c[1] * W + H / 2
-    pad = 1.0 if window else 1.35                              # 水滴は外側に影を落とす
+    pad = 1.0 if window else 1.65                              # 水滴は外側に影を落とす
     x0, y0 = max(0, int(cx - hw * pad)), max(0, int(cy - hh * pad))
     x1, y1 = min(W, int(math.ceil(cx + hw * pad)) + 1), min(H, int(math.ceil(cy + hh * pad)) + 1)
     if depth > 2 or hw < 2 or x1 - x0 < 4 or y1 - y0 < 4:
@@ -700,8 +700,8 @@ def dew(canvas, center, scale):
     for x, y, r in DEW:
         hw = r * scale * W
         cx, cy = (center[0] + x * scale + .5) * W, (center[1] + y * scale) * W + H / 2
-        x0, y0 = max(0, int(cx - hw * 1.4)), max(0, int(cy - hw * 1.4))
-        x1, y1 = min(W, int(cx + hw * 1.4) + 2), min(H, int(cy + hw * 1.4) + 2)
+        x0, y0 = max(0, int(cx - hw * 1.65)), max(0, int(cy - hw * 1.65))
+        x1, y1 = min(W, int(cx + hw * 1.65) + 2), min(H, int(cy + hw * 1.65) + 2)
         if hw < 1 or x1 - x0 < 4 or y1 - y0 < 4:
             continue
         yy, xx = np.mgrid[y0:y1, x0:x1].astype(np.float32)
