@@ -817,7 +817,8 @@ def portal_material(i):
     nt.links.new(fx, direction.inputs[0])
     nt.links.new(fz, direction.inputs[2])
     ray = new("BsdfRayPortal")
-    ray.inputs["Position"].default_value = (OFFSET[child], -CAM_D, 0)
+    origin = new("CombineXYZ", i0=OFFSET[child], i1=-CAM_D)  # Positionは未接続だと当たった点のままになる
+    nt.links.new(origin.outputs[0], ray.inputs["Position"])
     nt.links.new(direction.outputs[0], ray.inputs["Direction"])
 
     seen, keep, near = (new("Value") for _ in range(3))
