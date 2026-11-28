@@ -74,4 +74,4 @@ jobs:
           mkdir frames && for t in chunk_*.tar; do tar -xf $t -C frames; done
           ffmpeg -y -framerate 24 -pattern_type glob -i 'frames/f*.png' -c:v libx264 -pix_fmt yuv420p -crf 18 musicbox.mp4
           ffmpeg -y -i musicbox.mp4 -vf "fps=12,scale=480:-1:flags=lanczos,split[a][b];[a]palettegen[p];[b][p]paletteuse" musicbox.gif
-          gh release upload "${{ inputs.tag }}" musicbox.mp4 musicbox.gif --clobber
+          gh release upload "${{ inputs.tag }}" musicbox.mp4 musicbox.gif --clobber --repo "$GITHUB_REPOSITORY"
