@@ -915,10 +915,18 @@ def build_portals():
     bpy.context.window.scene = sweet
     bpy.context.view_layer.update()
     berry_ob = next(o for o in sweet.collection.objects if o.type == "EMPTY" and (o.location - Vector((.75, 1.32, -2.95))).length < 1e-4)
-    water_m = mat("ffffff", 0.0).copy()
-    water_m.name = "水"
-    wp = next(n for n in water_m.node_tree.nodes if n.type == "BSDF_PRINCIPLED")
-    wp.inputs["Transmission Weight"].default_value, wp.inputs["IOR"].default_value = 1.0, 1.33
+    # 小さな水滴：ガラスだと黒いくぼみに見えるので、透明＋縁と光の反射にする
+    water_m = bpy.data.materials.new("水")
+    water_m.use_nodes = True
+    nt = water_m.node_tree
+    nt.nodes.clear()
+    new, op = nodes(nt)
+    rim = op("ADD", 0.08, op("MULTIPLY", op("POWER", new("LayerWeight", i0=0.5).outputs["Facing"], 2.0), 0.4))
+    clear, gloss, mix = new("BsdfTransparent"), new("BsdfGlossy"), new("MixShader")
+    gloss.inputs["Roughness"].default_value = 0.08
+    for a_, b_ in ((rim, mix.inputs[0]), (clear.outputs[0], mix.inputs[1]), (gloss.outputs[0], mix.inputs[2]),
+                   (mix.outputs[0], new("OutputMaterial").inputs["Surface"])):
+        nt.links.new(a_, b_)
     q = PORTALS[2]
     for k, (x, y, r, m) in enumerate([(q["pos"][0], q["pos"][1], q["r"], mats[2])] + [(*d, water_m) for d in DEW]):
         depth = on_berry(berry_ob, x * 10, y * 10)
@@ -926,6 +934,7 @@ def build_portals():
         fix = (CAM_D + yc) / CAM_D
         ob = ball(sweet, m, (x * 10 * fix, yc, y * 10 * fix), r * 10 * fix, scale=(1, .7, 1))
         ob.name = "入口_水滴" if k == 0 else "水滴%d" % k
+        ob.visible_shadow = k == 0
     return mats
 
 
@@ -1002,6 +1011,7 @@ def save_blend(path):
     master.cycles.max_bounces, master.cycles.transparent_max_bounces = 12, 32
     master.cycles.glossy_bounces = master.cycles.transmission_bounces = 12
     master.cycles.sample_clamp_indirect = 0
+    master.cycles.blur_glossy = 0
     master.render.resolution_x, master.render.resolution_y, master.render.fps = W, H, FPS
     master.render.image_settings.file_format = "PNG"
     master.view_settings.view_transform = "Standard"
