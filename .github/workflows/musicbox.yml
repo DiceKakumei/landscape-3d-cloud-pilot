@@ -50,8 +50,10 @@ jobs:
       - uses: actions/checkout@v4
       - name: Download Blender
         run: |
-          curl -L -f --retry 5 --retry-all-errors -o blender.tar.xz "https://download.blender.org/release/Blender5.0/blender-5.0.1-linux-x64.tar.xz"
-          tar -xf blender.tar.xz
+          for i in 1 2 3 4 5; do
+            curl -L -f --retry 5 --retry-all-errors -o blender.tar.xz "https://download.blender.org/release/Blender5.0/blender-5.0.1-linux-x64.tar.xz" && tar -xf blender.tar.xz && break
+            echo "download broken, retry $i"; rm -rf blender.tar.xz blender-5.0.1-linux-x64; sleep 15
+          done
           mv blender-5.0.1-linux-x64 blender
           echo "$(pwd)/blender" >> "$GITHUB_PATH"
       - name: Download HDRI (Poly Haven, CC0)

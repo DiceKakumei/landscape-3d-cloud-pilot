@@ -527,7 +527,7 @@ def spring(f, f0, amp):
 def front_angle(f): return spring(f, 18, math.radians(100))
 def back_angle(f): return spring(f, 100, -math.radians(105))
 def cuv_angle(f): return -math.radians(95) * seg(f, 116, 136)
-LIFTS = [(G_tb, 150, 174, -0.55), (G_pf, 152, 176, -0.3), (G_pb, 154, 178, -0.8), (G_bb, 156, 180, -1.05), (G_bc, 158, 184, -1.45)]
+LIFTS = [(G_tb, 150, 174, -1.2), (G_pf, 152, 176, -0.7), (G_pb, 154, 178, -1.7), (G_bb, 156, 180, -2.3), (G_bc, 158, 184, -3.0)]
 
 T0 = (10 * 3600 + 9 * 60 + 20)
 for f in range(1, FEND + 1):
@@ -566,8 +566,8 @@ cam = camera([
     (124, (3.5, 9.5, 4.8), (0, 0, 3.4)),
     (140, (-0.6, 6.4, 3.6), (-0.3, 0.4, 3.1)),
     (150, (-0.7, 6.1, 3.5), (-0.4, 0.4, 3.0)),
-    (186, (7.0, 9.5, 7.0), (0, 1.1, 3.3)),
-    (240, (-5.5, 9.8, 6.0), (0, 1.1, 3.3)),
+    (186, (9.5, 10.5, 7.5), (0, 1.9, 3.3)),
+    (240, (-7.5, 11.5, 6.5), (0, 1.9, 3.3)),
 ], lens=60)
 cd = cam.data; cd.dof.use_dof = True
 cd.dof.focus_object = next(o for o in S.objects if o.name.startswith("cam_target"))
