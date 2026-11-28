@@ -642,6 +642,8 @@ def portal(canvas, level, center, scale, depth):
     inner = render(WORLDS[child][0], x0, y0, x1, y1, c, scale * q["s"])
     sub = np.zeros((H, W, 3), np.float32)
     sub[y0:y1, x0:x1] = inner
+    if child == 2:
+        dew(sub, c, scale * q["s"])
     portal(sub, child, c, scale * q["s"], depth + 1)
     inner = sub[y0:y1, x0:x1]
     area = canvas[y0:y1, x0:x1]
@@ -659,25 +661,54 @@ def portal(canvas, level, center, scale, depth):
     d = np.sqrt(dx * dx + dy * dy)
     mask = np.clip((1 - d) * hw + .5, 0, 1)
     seen = q["seen"] + (1 - q["seen"]) * float(smooth(.05, .75, p))
-    edge = 1 - smooth(.45, 1.0, d) * (1 - p)                    # 引きでは縁ほど元の物のまま
-    alpha = (mask * seen * edge)[..., None]
+    keep = float(1 - smooth(.6, 1.0, p))                       # 縁と光は寄り切る直前まで残す
     if q["kind"] == "pearl":
-        luster = np.stack([.5 + .5 * np.cos(d * 4 + dx * 2 + k) for k in (0, 2.1, 4.2)], -1)
+        alpha = (mask * seen * (1 - smooth(.6, 1.0, d) * (.35 + .65 * (1 - p)) * keep))[..., None]
+        luster = np.stack([.62 + .38 * np.cos(d * 4 + dx * 2 + k) for k in (0, 2.1, 4.2)], -1)
         area += (mask * smooth(.4, 1, d) * .12 * (1 - p))[..., None] * (luster - area)
         area += alpha * (inner - area)
+        area += (mask * smooth(.68, 1.0, d) * .45 * keep * smooth(0, .3, p))[..., None] * (luster - area)
+        spec = np.exp(-((dx + .42) ** 2 + (dy - .48) ** 2) / .02)
+        area += (mask * spec * .55 * keep * smooth(0, .3, p))[..., None] * (1 - area)
         return
-    # 水滴：影 → 下地を拡大 → 中の世界 → 縁と光
-    sd = np.sqrt((dx - .16) ** 2 + (dy + .22) ** 2)
-    area *= 1 - (smooth(1.28, .85, sd) * (1 - mask) * .42 * (1 - p))[..., None]
-    zoomx = np.clip((cx + dx * hw * (.62 + .38 * d * d) - x0).astype(int), 0, x1 - x0 - 1)
-    zoomy = np.clip((cy + dy * hh * (.62 + .38 * d * d) - y0).astype(int), 0, y1 - y0 - 1)
-    lens = area[zoomy, zoomx]
-    area += mask[..., None] * (1 - p) * (lens - area)
-    area += alpha * (inner - area)
-    area *= 1 - (mask * smooth(.62, 1.0, d) * .45 * (1 - p))[..., None]
-    caustic = np.exp(-((dx - .28) ** 2 / .07 + (dy + .5) ** 2 / .03)) * .5
-    spec = np.exp(-((dx + .38) ** 2 + (dy - .45) ** 2) / .012) + .5 * np.exp(-((dx + .58) ** 2 + (dy - .2) ** 2) / .003)
-    area += (mask * np.clip(caustic + spec, 0, 1) * (1 - p))[..., None] * (1 - area)
+    water(area, dx, dy, d, mask, hw, hh, cx - x0, cy - y0, inner, seen, p, keep)
+
+
+def water(area, dx, dy, d, mask, hw, hh, ox, oy, inner, seen, p, keep):
+    """areaに水滴を1つ描く。下地を拡大して透かし、影・集まった光・反射を足す。"""
+    sd = np.sqrt((dx - .14) ** 2 + (dy + .24) ** 2)
+    area *= 1 - (smooth(1.3, .8, sd) * (1 - mask) * .5 * keep)[..., None]
+    zx = np.clip((ox + dx * hw * (.5 + .4 * d * d)).astype(int), 0, area.shape[1] - 1)
+    zy = np.clip((oy + dy * hh * (.5 + .4 * d * d)).astype(int), 0, area.shape[0] - 1)
+    lens = np.clip(area[zy, zx] * 1.12 + .05, 0, 1)             # 水は下地を明るく拡大する
+    area += (mask * (1 - p))[..., None] * (lens - area)
+    if inner is not None:
+        area += (mask * seen * (1 - smooth(.6, 1.0, d) * .75 * keep))[..., None] * (inner - area)
+    area *= 1 - (mask * np.exp(-((d - .93) / .09) ** 2) * smooth(-.4, .7, dy) * .45 * keep)[..., None]  # 上側の縁は暗い
+    light = np.array([1.0, .93, .86], np.float32)
+    crescent = np.exp(-((d - .74) / .13) ** 2) * smooth(.1, -.75, dy) * .85       # 下側に集まる光
+    spec = np.exp(-((dx + .36) ** 2 / .018 + (dy - .46) ** 2 / .01)) * 1.2 + np.exp(-((dx + .62) ** 2 + (dy - .14) ** 2) / .003)
+    edge = np.exp(-((d - .97) / .035) ** 2) * .3
+    area += (mask * np.clip(crescent + spec + edge, 0, 1) * keep)[..., None] * (light - area)
+
+
+# 苺についた、中に何も映らない小さな水滴（画面座標は泡ではなく世界のもの）
+DEW = [(-0.012, -0.335, .017), (0.165, -0.19, .013), (0.15, -0.355, .022), (0.0, -0.175, .009)]
+
+
+def dew(canvas, center, scale):
+    for x, y, r in DEW:
+        hw = r * scale * W
+        cx, cy = (center[0] + x * scale + .5) * W, (center[1] + y * scale) * W + H / 2
+        x0, y0 = max(0, int(cx - hw * 1.4)), max(0, int(cy - hw * 1.4))
+        x1, y1 = min(W, int(cx + hw * 1.4) + 2), min(H, int(cy + hw * 1.4) + 2)
+        if hw < 1 or x1 - x0 < 4 or y1 - y0 < 4:
+            continue
+        yy, xx = np.mgrid[y0:y1, x0:x1].astype(np.float32)
+        dx, dy = (xx + .5 - cx) / hw, (yy + .5 - cy) / hw
+        d = np.sqrt(dx * dx + dy * dy)
+        water(canvas[y0:y1, x0:x1], dx, dy, d, np.clip((1 - d) * hw + .5, 0, 1), hw, hw,
+              cx - x0, cy - y0, None, 0, 0.0, 1.0)
 
 
 def blur(a, r):
@@ -718,6 +749,8 @@ for f in FRAMES:
     scale = 1 / k
     center = (-p[0] * (1 - k) / (1 - S) / k, -p[1] * (1 - k) / (1 - S) / k)
     canvas = render(WORLDS[i][0], 0, 0, W, H, center, scale).copy()
+    if i == 2:
+        dew(canvas, center, scale)
     portal(canvas, i, center, scale, 0)
     rgba = np.ones((H, W, 4), np.float32)
     rgba[..., :3] = np.clip(bloom(canvas), 0, 1)
