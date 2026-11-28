@@ -825,7 +825,7 @@ def portal_material(i):
     seen.name, keep.name, near.name = "seen", "keep", "near"
     facing = new("LayerWeight", i0=0.5).outputs["Facing"]
     if q["kind"] == "window":
-        factor, shine = seen.outputs[0], op("MULTIPLY", op("SUBTRACT", 1.0, near.outputs[0]), 0.05)
+        factor, shine = seen.outputs[0], op("MULTIPLY", near.outputs[0], 0.0)
         base = new("BsdfTransparent").outputs[0]
     else:
         rim = op("POWER", facing, 2.0)
@@ -922,7 +922,9 @@ def build_portals():
     q = PORTALS[2]
     for k, (x, y, r, m) in enumerate([(q["pos"][0], q["pos"][1], q["r"], mats[2])] + [(*d, water_m) for d in DEW]):
         depth = on_berry(berry_ob, x * 10, y * 10)
-        ob = ball(sweet, m, (x * 10, depth - r * 10 * .4, y * 10), r * 10, scale=(1, .7, 1))
+        yc = depth - r * 10 * .4
+        fix = (CAM_D + yc) / CAM_D
+        ob = ball(sweet, m, (x * 10 * fix, yc, y * 10 * fix), r * 10 * fix, scale=(1, .7, 1))
         ob.name = "入口_水滴" if k == 0 else "水滴%d" % k
     return mats
 
@@ -998,6 +1000,8 @@ def save_blend(path):
     for name in ("samples", "use_denoising", "denoiser", "sample_clamp_indirect", "device"):
         setattr(master.cycles, name, getattr(ref.cycles, name))
     master.cycles.max_bounces, master.cycles.transparent_max_bounces = 12, 32
+    master.cycles.glossy_bounces = master.cycles.transmission_bounces = 12
+    master.cycles.sample_clamp_indirect = 0
     master.render.resolution_x, master.render.resolution_y, master.render.fps = W, H, FPS
     master.render.image_settings.file_format = "PNG"
     master.view_settings.view_transform = "Standard"
@@ -1018,7 +1022,7 @@ def save_blend(path):
     sc = bpy.context.scene
     assert len(bpy.data.scenes) == 1 and len(sc.timeline_markers) == 3 and bpy.data.actions
     sc.render.resolution_percentage = 75
-    for f in (0, 75, 119, 120, 240, 305, 407):
+    for f in (0, 119, 120, 240, 330, 370, 407):
         sc.frame_set(f)
         sc.camera = [mk for mk in sorted(sc.timeline_markers, key=lambda mk: mk.frame) if mk.frame <= f][-1].camera
         sc.render.filepath = os.path.join(os.path.dirname(path), "check%04d.png" % f)
